@@ -3,8 +3,6 @@ FIWARE Interface Designer
 
 FIWARE Interface Designer GE implementation. Copyright 2013 Adminotech Oy All rights reserved. See LICENCE for conditions of distribution and use.
 
-**Note:** The public open source code is being finished and will be posted to this repository.
-
 # Interface Designer Installation and Administration
 
 This document describes the installation and administration of the Interface Designer GE.
@@ -24,7 +22,9 @@ A WebGL-enabled browser, which includes, but not limited to:
 * Mozilla Firefox 4.0+
 * Safari 6.0+ (disabled by default)
 * Opera 11+ (disabled by default)
+
 Other internal dependencies are
+
 * Classy.js v1.4 (http://classy.pocoo.org/)
 * jQuery v2.0.3 (https://jquery.org/)
 * jQuery UI v1.10.3 (http://jqueryui.com/)
@@ -49,6 +49,7 @@ This section will be updated closer to the reference implementation software rel
 ```
 
 * Finally, clone the GIT repository https://github.com/Adminotech/fiware-interface-designer. Inside there are three scripts: InterfaceDesigner-main.js, XML3DEditor.js and RocketEditor.webrocketjs.
+
 ### WebRocket
 
 * Add the RocketEditor.webrocketjs script to src/applications in the WebRocket code tree, and add InterfaceDesigner-main.js into src/lib
