@@ -1,0 +1,692 @@
+define([
+        "lib/classy",
+        "core/framework/TundraSDK",
+        "core/script/IApplication",
+        "core/scene/Scene",
+        "core/scene/IComponent",
+        "core/scene/Attribute",
+        "core/scene/AttributeChange",
+        "lib/InterfaceDesigner-main"
+    ], function(Class, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, _Editor) {
+
+var RocketKeyEvent = KeyEventWrapper.$extend(
+{
+    __init__ : function(keyEvent)
+    {
+        this.$super(-1);
+
+        this.type = keyEvent.type;
+
+        this.keyCode = keyEvent.keyCode;
+        this.key = keyEvent.key;
+        this.repeat = keyEvent.repeat;
+        this.pressed = keyEvent.pressed;
+    }
+});
+
+var RocketMouseEvent = MouseEventWrapper.$extend(
+{
+    __init__ : function(mouseEvent)
+    {
+        this.$super(-1);
+
+        this.type = mouseEvent.type;
+        this.x = mouseEvent.x;
+        this.y = mouseEvent.y;
+
+        this.relativeX = mouseEvent.relativeX;
+        this.relativeY = mouseEvent.relativeY;
+        this.relativeZ = mouseEvent.relativeZ;
+
+        this.leftDown = mouseEvent.leftDown;
+        this.middleDown = mouseEvent.middleDown;
+        this.rightDown = mouseEvent.rightDown;
+
+        this.targetId = mouseEvent.targetId;
+        this.targetNodeName = mouseEvent.targetNodeName;
+        this.originalEvent = mouseEvent.originalEvent;
+    }
+});
+
+var RocketScene = SceneWrapper.$extend(
+{
+    __init__ : function()
+    {
+        this.$super();
+    },
+
+    entities : function()
+    {
+        var result = [];
+        var entities = TundraSDK.framework.scene.entities;
+        for (var i = 0; i < entities.length; i++)
+            if (isNotNull(entities[i]))
+                result.push(new RocketEntity(entities[i]));
+
+        return result;
+    },
+
+    entityById : function(entityId)
+    {
+        var entityPtr = TundraSDK.framework.scene.entityById(entityId);
+        if (entityPtr !== null && entityPtr !== undefined)
+            return new RocketEntity(entityPtr);
+
+        return null;
+    },
+
+    createEntity : function(components, change, replicated, componentsReplicated)
+    {
+        if (isNull(replicated))
+            replicated = true;
+        if (isNull(componentsReplicated))
+            componentsReplicated = replicated;
+        if (isNotNull(replicated) && isNull(change))
+            change = replicated ? AttributeChange.Replicated : AttributeChange.LocalOnly;
+
+        var entity = TundraSDK.framework.scene.createEntity(0, components, change, replicated, componentsReplicated);
+        return new RocketEntity(entity);
+    },
+
+    removeEntity : function(entityId)
+    {
+        TundraSDK.framework.scene.removeEntity(entityId);
+    },
+
+    registeredComponents : function()
+    {
+        return Scene.registeredComponents;
+    },
+
+    doesAllowSameNamedComponents : function()
+    {
+        return false;
+    },
+
+    componentNameWithPrefix : function(componentName)
+    {
+        return IComponent.ensureComponentNamePrefix(componentName);
+    },
+
+    componentNameInHumanFormat : function(typeName)
+    {
+        if (typeName.indexOf("EC_") == 0)
+        {
+            var compNameNoEC = typeName.substring(3);
+            if (compNameNoEC == "DynamicComponent")
+                compNameNoEC = "Dynamic";
+
+            return compNameNoEC;
+        }
+        else
+            return typeName;
+    },
+
+    doRaycast : function(x, y, selectionLayer)
+    {
+        var result = TundraSDK.framework.renderer.raycast(x, y, selectionLayer);
+        return new RocketRaycastResult(result);
+    },
+
+    isAttributeAtomic : function(attrTypeId)
+    {
+        return (attrTypeId === Attribute.String ||
+                attrTypeId === Attribute.Int ||
+                attrTypeId === Attribute.Real ||
+                attrTypeId === Attribute.Bool ||
+                attrTypeId === Attribute.UInt ||
+                attrTypeId === Attribute.AssetReference ||
+                attrTypeId === Attribute.EntityReference ||
+                attrTypeId === Attribute.QVariant);
+    },
+
+    /// AssetReferenceList and QVariantList technically are arrays
+    isAttributeArray : function(attrTypeId)
+    {
+        return (attrTypeId === Attribute.AssetReferenceList ||
+                attrTypeId === Attribute.QVariantList);
+    },
+
+    /// Transform is the most complex attribute we have
+    isAttributeTransform : function(attrTypeId)
+    {
+        return (attrTypeId === Attribute.Transform);
+    },
+
+    isAttributeColor : function(attrTypeId)
+    {
+        return (attrTypeId === Attribute.Color);
+    },
+
+    /// Color/QPoint/Float2, Float3, Float4/Quat are tuples
+    /// returns number of elements in the tuple, or 0 if not tuple
+    isAttributeTuple : function(attrTypeId)
+    {
+        if (attrTypeId === Attribute.Color ||
+           attrTypeId === Attribute.Float4 ||
+           attrTypeId === Attribute.Quat)
+            return 4;
+        else if (attrTypeId === Attribute.Float3)
+            return 3;
+        else if (attrTypeId === Attribute.Float2 ||
+                attrTypeId === Attribute.QPoint)
+            return 2;
+        else
+            return 0;
+    },
+
+    // Returns a type name for a given type ID
+    attributeTypeToName : function(attrTypeId)
+    {
+        return Attribute.toTypeName(attrTypeId);
+    },
+
+    attributeTypeIds : function()
+    {
+        return Attribute.typeIds();
+    },
+
+    unsubscribe : function(subscription)
+    {
+        TundraSDK.framework.events.unsubscribe(subscription);
+    },
+
+    entityCreated : function(context, callback)
+    {
+        this.registerCallback("onEntityCreated", context, callback);
+        return TundraSDK.framework.scene.onEntityCreated(this, this._onEntityCreated);
+    },
+
+    entityRemoved : function(context, callback)
+    {
+        this.registerCallback("onEntityRemoved", context, callback);
+        return TundraSDK.framework.scene.onEntityRemoved(this, this._onEntityRemoved);
+    },
+
+    componentCreated : function(context, callback)
+    {
+        this.registerCallback("onComponentCreated", context, callback);
+        return TundraSDK.framework.scene.onComponentCreated(this, this._onComponentCreated);
+    },
+
+    componentRemoved : function(context, callback)
+    {
+        this.registerCallback("onComponentRemoved", context, callback);
+        return TundraSDK.framework.scene.onComponentRemoved(this, this._onComponentRemoved);
+    },
+
+    attributeChanged : function(context, callback)
+    {
+        this.registerCallback("onAttributeChanged", context, callback);
+        return TundraSDK.framework.scene.onAttributeChanged(this, this._onAttributeChanged);
+    },
+
+    _onEntityCreated : function(entityPtr)
+    {
+        var entity = new RocketEntity(entityPtr);
+        this.callback("onEntityCreated", entity);
+    },
+
+    _onEntityRemoved : function(entityPtr)
+    {
+        var entity = new RocketEntity(entityPtr);
+        this.callback("onEntityRemoved", entity);
+    },
+
+    _onComponentCreated : function(entityPtr, componentPtr)
+    {
+        var entity = new RocketEntity(entityPtr);
+        var component = new RocketComponent(componentPtr);
+
+        this.callback("onComponentCreated", entity, component);
+    },
+
+    _onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        var entity = new RocketEntity(entityPtr);
+        var component = new RocketComponent(componentPtr);
+
+        this.callback("onComponentRemoved", entity, component);
+    },
+
+    _onAttributeChanged : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        var entity = new RocketEntity(entityPtr);
+        var component = new RocketComponent(componentPtr);
+
+        this.callback("onAttributeChanged", entity, component, attributeIndex, attributeName, attributeValue);
+    },
+
+    logInfo : function(text)
+    {
+        TundraSDK.framework.client.logInfo(text);
+    },
+
+    logWarning : function(text)
+    {
+        TundraSDK.framework.client.logWarning(text);
+    },
+
+    logError : function(text)
+    {
+        TundraSDK.framework.client.logError(text);
+    }    
+});
+
+var RocketEntity = EntityWrapper.$extend(
+{
+    __init__ : function(entityPtr)
+    {
+        this.$super(entityPtr.id, entityPtr.name, entityPtr.local, entityPtr.temporary);
+        this._ptr = entityPtr;
+
+        this.callbacks = {};
+    },
+
+    setName : function(name)
+    {
+        if (this.expired())
+            return;
+
+        this.name = name;
+        this._ptr.setName(name);
+    },
+
+    getName : function()
+    {
+        return this._ptr.getName();
+    },
+
+    numberOfComponents : function()
+    {
+        if (this.expired())
+            return 0;
+
+        return this._ptr.components.length;
+    },
+
+    components : function()
+    {
+        var result = [];
+        if (this.expired())
+            return result;
+
+        for (var i = 0; i < this._ptr.components.length; i++)
+        {
+            var componentPtr = this._ptr.components[i];
+            result.push(new RocketComponent(componentPtr));
+        }
+
+        return result;
+    },
+
+    createComponent : function(typeName, name, isLocal)
+    {
+        if (this.expired())
+            return null;
+
+        var attrChange = isLocal ? AttributeChange.LocalOnly : AttributeChange.Replicated;
+        var componentPtr = this._ptr.createComponent(typeName, name, attrChange);
+        if (isNotNull(componentPtr))
+            return new RocketComponent(componentPtr);
+
+        return null;
+    },
+
+    hasComponent : function(type, name)
+    {
+        return isNotNull(this.getComponent(type, name));
+    },
+
+    getComponent : function(type, name)
+    {
+        if (this.expired())
+            return null;
+
+        var componentPtr = this._ptr.getComponent(type, name);
+        if (componentPtr !== null && componentPtr !== undefined)
+            return new RocketComponent(componentPtr);
+
+        return null;
+    },
+
+    componentById : function(componentId)
+    {
+        if (this.expired())
+            return null;
+
+        var componentPtr = this._ptr.getComponentById(componentId);
+        if (componentPtr !== null && componentPtr !== undefined)
+            return new RocketComponent(componentPtr);
+
+        return null;
+    },
+
+    removeComponent : function(componentId)
+    {
+        if (this.expired())
+            return;
+
+        this._ptr.removeComponent(componentId);
+    },
+
+    onComponentCreated : function(context, callback)
+    {
+        this.registerCallback("onComponentCreated", context, callback);
+        return this._ptr.onComponentCreated(this, this._onComponentCreated);
+    },
+
+    onComponentRemoved : function(context, callback)
+    {
+        this.registerCallback("onComponentRemoved", context, callback);
+        return this._ptr.onComponentRemoved(this, this._onComponentRemoved);
+    },
+
+    _onComponentCreated : function(entity, component)
+    {
+        var entityPtr = new RocketEntity(entity);
+        var componentPtr = new RocketComponent(component);
+
+        this.callback("onComponentCreated", entityPtr, componentPtr);
+    },
+
+    _onComponentRemoved : function(entity, component)
+    {
+        var entityPtr = new RocketEntity(entity);
+        var componentPtr = new RocketComponent(component);
+
+        this.callback("onComponentRemoved", entityPtr, componentPtr);
+    }
+});
+
+var RocketComponent = ComponentWrapper.$extend(
+{
+    __init__ : function(componentPtr)
+    {
+        this.$super(componentPtr.id, componentPtr.name, componentPtr.typeName, componentPtr.parentEntity.id);
+        this._ptr = componentPtr;
+
+        this.callbacks = {};
+    },
+
+    isDynamic : function()
+    {
+        if (this.expired())
+            return false;
+
+        return this._ptr.isDynamic();
+    },
+
+    setTemporary : function(temporary)
+    {
+        if (this.expired())
+            return;
+
+        this._ptr.temporary = temporary;
+    },
+
+    attributes : function()
+    {
+        var result = [];
+        if (this.expired())
+            return result;
+
+        for (var i in this._ptr.attributes)
+        {
+            var attributePtr = this._ptr.attributes[i];
+            if (isNotNull(attributePtr))
+                result.push(new RocketAttribute(attributePtr, this));
+        }
+
+        return result;
+    },
+
+    createAttribute : function(typeId, name)
+    {
+        if (this.expired())
+            return false;
+
+        return (this.isDynamic() && this._ptr.createAttribute(typeId, name));
+    },
+
+    attributeByName : function(name)
+    {
+        if (this.expired())
+            return null;
+
+        var attributePtr = this._ptr.attributes[name];
+        if (isNotNull(attributePtr))
+            return new RocketAttribute(attributePtr, this);
+
+        return null;
+    },
+
+    getAttributeByIndex : function(index)
+    {
+        if (this.expired())
+            return null;
+
+        return new RocketAttribute(this._ptr.getAttributeByIndex(index), this);
+    },
+
+    removeAttribute : function(index)
+    {
+        if (this.expired())
+            return false;
+
+        return (this.isDynamic() && this._ptr.removeAttribute(index));
+    },
+
+    onAttributeAdded : function(context, callback)
+    {
+        if (this.expired())
+            return;
+
+        if (!this.isDynamic())
+            return;
+
+        this.registerCallback("onAttributeAdded", context, callback);
+        return this._ptr.onAttributeAdded(this, this._onAttributeAdded);
+    },
+
+    onAttributeChanged : function(context, callback)
+    {
+        if (this.expired())
+            return;
+
+        this.registerCallback("onAttributeChanged", context, callback);
+        return this._ptr.onAttributeChanged(this, this._onAttributeChanged);
+    },
+
+    onAttributeAboutToBeRemoved : function(context, callback)
+    {
+        if (this.expired())
+            return;
+
+        if (!this.isDynamic())
+            return;
+
+        this.registerCallback("onAttributeAboutToBeRemoved", context, callback);
+        return this._ptr.onAttributeAboutToBeRemoved(this, this._onAttributeAboutToBeRemoved);
+    },
+
+    _onAttributeAdded : function(component, attribute)
+    {
+        var componentPtr = new RocketComponent(component);
+        var attributePtr = new RocketAttribute(attribute, componentPtr);
+
+        this.callback("onAttributeAdded", componentPtr, attributePtr);
+    },
+
+    _onAttributeChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
+    {
+        var entityPtr = new RocketEntity(entity);
+        var componentPtr = new RocketComponent(component);
+
+        this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+    },
+
+    _onAttributeAboutToBeRemoved : function(component, attributeIndex, attributeName)
+    {
+        var componentPtr = new RocketComponent(component);
+
+        this.callback("onAttributeAboutToBeRemoved", componentPtr, attributeIndex, attributeName);
+    }
+});
+
+var RocketAttribute = AttributeWrapper.$extend(
+{
+    __init__ : function(attributePtr, owner)
+    {
+        var parent = null;
+        if (isNull(owner))
+            parent = new RocketComponent(attributePtr.owner);
+        else
+            parent = owner;
+
+        this.$super(attributePtr.index, attributePtr.typeId, attributePtr.name, parent);
+        this._ptr = attributePtr;
+    },
+
+    get : function()
+    {
+        if (this.expired())
+            return null;
+
+        return this._ptr.getClone();
+    },
+
+    set : function(value)
+    {
+        if (this.expired())
+            return;
+
+        this._ptr.set(value);
+    }
+});
+
+var RocketRaycastResult = RaycastResult.$extend(
+{
+    __init__ : function(raycastResult)
+    {
+        this.$super();
+
+        if (isNotNull(raycastResult.entity))
+            this.entity = new RocketEntity(raycastResult.entity);
+        if (isNotNull(raycastResult.component))
+            this.component = new RocketComponent(raycastResult.component);
+
+        this.pos = raycastResult.pos;
+        this.distance = raycastResult.distance;
+        this.submesh = raycastResult.submesh;
+        this.faceIndex = raycastResult.faceIndex;
+        this.ray = raycastResult.ray;
+    }
+});
+
+var RocketEditor = IEditor.$extend(
+{
+    __init__ : function()
+    {
+        this.$super();
+    },
+
+    /* virtual */ 
+    isConnected : function()
+    {
+        return TundraSDK.framework.client.isConnected();
+    },
+
+    /* virtual */
+    width : function()
+    {
+        return TundraSDK.framework.client.container.width();
+    },
+
+    /* virtual */
+    height : function()
+    {
+        var containerHeight = TundraSDK.framework.client.container.height();
+        var taskbarHeight = TundraSDK.framework.ui.taskbar.height();
+
+        return containerHeight - taskbarHeight;
+    },
+
+    taskbar : function()
+    {
+        return TundraSDK.framework.client.ui.taskbar;
+    },
+
+    container : function()
+    {
+        return TundraSDK.framework.client.container;
+    },
+
+    /* pure virtual */
+    addWidget : function(element)
+    {
+        TundraSDK.framework.ui.addWidgetToScene(element);
+    },
+
+
+    /* pure virtual */ 
+    registerClientConnectedCallback : function(context, callback)
+    {
+        TundraSDK.framework.client.onConnected(context, callback);
+    },
+
+    /* pure virtual */ 
+    registerKeyEventCallback : function(context, callback)
+    {
+        this.registerCallback("onKeyEvent", context, callback);
+        TundraSDK.framework.input.onKeyEvent(this, this.onKeyEvent);
+    },
+
+    /* pure virtual */ 
+    registerMouseEventCallback : function(context, callback)
+    {
+        this.registerCallback("onMouseEvent", context, callback);
+        TundraSDK.framework.input.onMouseEvent(this, this.onMouseEvent);
+    },
+
+    /* pure virtual */
+    registerResizeEventCallback : function(context, callback)
+    {
+        this.registerCallback("onResizeEvent", context, callback);
+        TundraSDK.framework.ui.onWindowResize(this, this.onResizeEvent);
+    },
+
+    registerSceneObject : function()
+    {
+        return new RocketScene();
+    },
+
+    onKeyEvent : function(keyEvent)
+    {
+        this.callback("onKeyEvent", new RocketKeyEvent(keyEvent));
+    },
+
+    onMouseEvent : function(mouseEvent)
+    {
+        this.callback("onMouseEvent", new RocketMouseEvent(mouseEvent));
+    },
+
+    onResizeEvent : function(width, height)
+    {
+        this.callback("onResizeEvent", width, height);
+    }
+});
+
+// Main IApplication object
+var EditorApplication = IApplication.$extend(
+{
+    __init__ : function()
+    {
+        this.$super("Editor");
+        var editor = new RocketEditor();
+    }
+})
+
+return EditorApplication;
+
+});
