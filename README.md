@@ -65,9 +65,12 @@ This section will be updated closer to the reference implementation software rel
 
 * While in the `<head>` section, add another `<script>` tag, and instantiate the editor. The constructor has two required arguments which are id-s to the main
 element and the main `<xml3d>` element. For best results, do a scene that has a `<div>` with a `<xml3d>` DOM tree as a child to said `<div>`:
+```
    <script type="text/javascript">
        var editor = new XML3DEditor("id-of-main-DIV", "id-of-main-XML3D-element");
    </script>
+```
+
 * Default shortcuts for toggling the editor (turning it on or off) is "shift" + "s", and switching between Scene Tree editor and EC editor panels is "shift" + "e". You can override these shortcuts by adding:
 ```
     editor.setToggleEditorShortcut(metaKey, key1);
