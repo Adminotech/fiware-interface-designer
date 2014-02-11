@@ -735,7 +735,7 @@ var IEditor = IWrapper.$extend(
             {
                 var componentNames = [];
                 var droppedComponents = $(this).find("div[id^='dropped-']");
-                for (var i =0; i < droppedComponents.length; i++)
+                for (var i = 0; i < droppedComponents.length; i++)
                     componentNames.push($(droppedComponents[i]).data("component"));
 
                 var entityName = $("#" + inputNewEntityId).val();
@@ -1214,21 +1214,29 @@ var IEditor = IWrapper.$extend(
 
     onComponentCreated : function(entityPtr, componentPtr)
     {
+        if (!this.isEditorEnabled())
+            return;
+
         if (this.isECEditor)
-            this.appendAccordionForComponent(componentPtr);
-        else
         {
-            var treeNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-            this.createTreeItemForComponent(componentPtr, treeNode);
+            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+                this.appendAccordionForComponent(componentPtr);
         }
+
+        var treeNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        this.createTreeItemForComponent(componentPtr, treeNode);
     },
 
     onComponentRemoved : function(entityPtr, componentPtr)
     {
+        if (!this.isEditorEnabled())
+            return;
+
         if (this.isECEditor)
         {
-            if (componentPtr.typeName === "EC_Name")
-                this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
+            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+                if (componentPtr.typeName === "EC_Name")
+                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
 
             var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
             $(accordionId).hide("fast", function()
@@ -1236,28 +1244,32 @@ var IEditor = IWrapper.$extend(
                 $(accordionId).remove();
             });
         }
-        else
-        {
-            if (componentPtr.typeName === "EC_Name")
-                this.renameEntityNode(entityPtr, true);
 
-            var componentToRemove = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
-            if (isNotNull(componentToRemove))
-                componentToRemove.remove();
-        }
+        if (componentPtr.typeName === "EC_Name")
+            this.renameEntityNode(entityPtr, true);
+
+        var componentToRemove = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
+        if (isNotNull(componentToRemove))
+            componentToRemove.remove();
     },
 
     onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
     {
+        if (!this.isEditorEnabled())
+            return;
+
         if (this.isECEditor)
         {
-            this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-            if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-                this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
+            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            {
+                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+                if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
+            }
         }
-        else
-            if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-                this.renameEntityNode(entityPtr);
+
+        if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+            this.renameEntityNode(entityPtr);
     },
 
     populateComponents : function(entityPtr, activeComponent)
@@ -1351,7 +1363,7 @@ var IEditor = IWrapper.$extend(
                 parentEntityId : componentPtr.parentId
             });
 
-            for(var attr in attributes)
+            for (var attr = 0; attr < attributes.length; attr++)
             {
                 var tableRow = this.createRowsForAttribute(componentPtr.parentId, componentPtr.id, attributes[attr].name, attributes[attr]);
                 if (tableRow != null)
@@ -1488,6 +1500,7 @@ var IEditor = IWrapper.$extend(
     {
         var element = null;
         var attributeValue = attributePtr.get();
+
         var attributeTypeId = attributePtr.typeId;
         var isDynamic = attributePtr.owner.isDynamic();
         var jsType = typeof(attributeValue);
@@ -1857,7 +1870,7 @@ var IEditor = IWrapper.$extend(
             else
                 xyzw = ["r", "g", "b", "a"];
 
-            for (var i in xyzw)
+            for (var i = 0; i < xyzw.length; i++)
             {
                 var value = attributeValue[xyzw[i]];
                 if (isNull(value))
