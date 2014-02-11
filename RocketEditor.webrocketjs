@@ -589,6 +589,7 @@ var RocketEditor = IEditor.$extend(
     __init__ : function()
     {
         this.$super();
+        this.transformEditor = new TransformEditor();
     },
 
     /* virtual */ 
@@ -674,6 +675,51 @@ var RocketEditor = IEditor.$extend(
     onResizeEvent : function(width, height)
     {
         this.callback("onResizeEvent", width, height);
+    }
+});
+
+var TransformEditor = Class.$extend(
+{
+    __init__ : function()
+    {
+        this.entity = null;
+        this.gizmo = null;
+    },
+
+    _createTransformGizmoEntity : function()
+    {
+        if (isNotNull(this.entity) && isNotNull(this.gizmo))
+            return;
+
+        this.entity = TundraSDK.framework.scene.createLocalEntity(["TransformGizmo"]);
+        if (isNotNull(this.entity))
+            this.gizmo = this.entity.getComponent("TransformGizmo");
+    },
+
+    setTargetEntity : function(entityPtr)
+    {
+        if (isNull(this.entity) || isNull(this.gizmo))
+            this._createTransformGizmoEntity();
+
+        if (entityPtr.id === this.entity.id)
+            return;
+
+        var placeable = entityPtr.getComponent("Placeable");
+        if (isNull(placeable))
+        {
+            this.clearSelection();
+            return;
+        }
+
+        this.gizmo.attachEntity(entityPtr);
+    },
+
+    clearSelection : function()
+    {
+        if (isNull(this.entity) && isNull(this.gizmo))
+            return;
+
+        this.gizmo.detachEntity();
     }
 });
 

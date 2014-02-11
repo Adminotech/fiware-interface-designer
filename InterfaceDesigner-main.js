@@ -662,7 +662,7 @@ var IEditor = IWrapper.$extend(
             }
             else
                 if (isNotNull(this.transformEditor))
-                    this.transformEditor.clear();
+                    this.transformEditor.clearSelection();
         }
     },
 
@@ -1001,6 +1001,9 @@ var IEditor = IWrapper.$extend(
             this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
 
             this.ui.ecEditor.buttonsHolder.hide();
+
+            if (isNotNull(this.transformEditor))
+                this.transformEditor.clearSelection();
         }
         else
         {
