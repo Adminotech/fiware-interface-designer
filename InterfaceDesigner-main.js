@@ -210,6 +210,11 @@ var AttributeWrapper = IWrapper.$extend(
         this.owner = parent;
     },
 
+    validValues : function()
+    {
+        return null;
+    },
+
     // pure virtual
     get : function() {},
     set : function(value) {}
@@ -985,7 +990,7 @@ var IEditor = IWrapper.$extend(
 
     selectEntity : function(entityPtr, activeComponent)
     {
-        this.ui.ecEditor.holder.undelegate();
+        this.ui.ecEditor.holder.off();
         this.ui.ecEditor.holder.empty();
         this.ui.ecEditor.addCompButton.data("targetEntity", -1);
         this.ui.ecEditor.editCompButton.data("toggle", false);
@@ -1287,7 +1292,9 @@ var IEditor = IWrapper.$extend(
             this.appendAccordionForComponent(components[i], compId === activeComponent);
         }
 
-        this.ui.ecEditor.holder.delegate("input", "change", this.onAttributesEdit);
+        this.ui.ecEditor.holder.on("change", "input", this.onAttributesEdit);
+        this.ui.ecEditor.holder.on("change", "select", this.onAttributesEdit);
+
         // this.ui.ecEditor.holder.sortable();
     },
 
@@ -1675,6 +1682,35 @@ var IEditor = IWrapper.$extend(
 
             tableBody.data("arrayLength", attributeValue.length);
         }
+        else if (IEditor.scene.isAttributeEnum(attributeTypeId))
+        {
+            var values = attributePtr.validValues();
+            if (isNotNull(values))
+            {
+                var selectElement = $("<select/>", {
+                    id : idOfElements
+                });
+                selectElement.data("attrData", {
+                    name : attrName,
+                    type : jsType,
+                    typeId : attributeTypeId,
+                    parentCompId : componentId,
+                    parentEntityId : entityId,
+                });
+
+                for (var i = 0; i < values.length; i++)
+                {
+                    var option = $("<option/>", {
+                        value : values[i]
+                    });
+
+                    option.html(values[i]);
+                    selectElement.append(option);
+                }
+
+                selectElement.appendTo(elementColumn);
+            }
+        }
 
         return tableBody;
     },
@@ -1743,7 +1779,7 @@ var IEditor = IWrapper.$extend(
         if (isNull(attribute))
             return;
 
-        if (IEditor.scene.isAttributeAtomic(typeId))
+        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
         {
             if (type === "boolean")
                 attribute.set($(this).is(":checked"));

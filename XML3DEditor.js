@@ -116,14 +116,17 @@ var XML3DScene = SceneWrapper.$extend(
             conf[i]["id"] = {};
             conf[i]["id"].type = XML3DAttribute.String;
             conf[i]["id"].value = "";
+            conf[i]["id"].allowedValues = null;
 
             conf[i]["class"] = {};
             conf[i]["class"].type = XML3DAttribute.String;
             conf[i]["class"].value = "";
+            conf[i]["class"].allowedValues = null;
 
             conf[i]["style"] = {};
             conf[i]["style"].type = XML3DAttribute.String;
             conf[i]["style"].value = "";
+            conf[i]["style"].allowedValues = null;
 
             for (var j in allClasses[i])
             {
@@ -136,6 +139,7 @@ var XML3DScene = SceneWrapper.$extend(
                 {
                     var type = undefined;
                     var value = params;
+                    var allowedValues = null;
 
                     if (typeof(params) === "number")
                         type = XML3DAttribute.Number;
@@ -172,19 +176,22 @@ var XML3DScene = SceneWrapper.$extend(
                             else if (params.e === XML3D.DataChannelOrigin)
                                 type = XML3DAttribute.DataChannelOrigin;
 
-                            value = params.d;
+                            value = params.e[params.d];
+                            allowedValues = params.e;
                         }
                     }
 
                     conf[i][j] = {};
                     conf[i][j]["type"] = type;
                     conf[i][j]["value"] = value;
+                    conf[i][j]["allowedValues"] = allowedValues;
                 }
                 else if (isNotNull(a) && (j != "className") && (a === XML3D.ReferenceHandler))
                 {
                     conf[i][j] = {};
                     conf[i][j]["type"] = XML3DAttribute.String;
                     conf[i][j]["value"] = "";
+                    conf[i][j]["allowedValues"] = null;
                 }
                 else if (isNotNull(a) && (
                     a === XML3D.FloatArrayValueHandler ||
@@ -199,6 +206,7 @@ var XML3DScene = SceneWrapper.$extend(
                     conf[i][j] = {};
                     conf[i][j]["type"] = XML3DAttribute.Array;
                     conf[i][j]["value"] = "";
+                    conf[i][j]["allowedValues"] = null;
                 }
             }
         }
@@ -285,8 +293,7 @@ var XML3DScene = SceneWrapper.$extend(
                 attrTypeId === XML3DAttribute.Number ||
                 attrTypeId === XML3DAttribute.Boolean ||
                 attrTypeId === XML3DAttribute.Enum ||
-                attrTypeId === XML3DAttribute.Array ||
-                attrTypeId >= 10);
+                attrTypeId === XML3DAttribute.Array);
     },
 
     isAttributeArray : function(attrTypeId)
@@ -304,6 +311,16 @@ var XML3DScene = SceneWrapper.$extend(
             return 4;
         else
             return 0;
+    },
+
+    isAttributeEnum : function(attrTypeId)
+    {
+        return (attrTypeId === XML3DAttribute.MeshTypes ||
+                attrTypeId === XML3DAttribute.TextureTypes ||
+                attrTypeId === XML3DAttribute.FilterTypes ||
+                attrTypeId === XML3DAttribute.WrapTypes ||
+                attrTypeId === XML3DAttribute.DataFieldType ||
+                attrTypeId === XML3DAttribute.DataChannelOrigin);
     },
 
     attributeTypeToName : function(attrTypeId)
@@ -476,11 +493,14 @@ var XML3DEntity = EntityWrapper.$extend(
             return null;
 
         var newComponent = document.createElement(typeName);
-        if (name )
-        if (XML3DComponent.isValueElement(typeName))
-            newComponent.setAttribute("name", name);
-        else
-            newComponent.setAttribute("id", name);
+
+        if (isNotNull(name) && name !== "")
+        {
+            if (XML3DComponent.isValueElement(typeName))
+                newComponent.setAttribute("name", name);
+            else
+                newComponent.setAttribute("id", name);
+        }
 
         this._ptr.appendChild(newComponent);
 
@@ -812,6 +832,22 @@ var XML3DAttribute = AttributeWrapper.$extend(
             str = value;
 
         return str;
+    },
+
+    validValues : function()
+    {
+        var result = [];
+        var values = XML3DScene.configuration[this.parentType][this.name].allowedValues;
+        if (isNull(values))
+            return null;
+
+        for (var i in values)
+        {
+            if (/^\d+$/.test(i))
+                result.push(values[i]);
+        }
+
+        return result;
     },
 
     get : function()
