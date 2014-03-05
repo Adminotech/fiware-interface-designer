@@ -1,10 +1,6 @@
 function getParentGroup(childNode)
 {
-    var parentGroup = childNode;
-    while(isNotNull(parentGroup) && parentGroup.localName !== "group")
-        parentGroup = parentGroup.parentNode;
-
-    return parentGroup;
+    return childNode.parentNode;
 }
 
 function getChildrenGroups(parentNode)
@@ -12,8 +8,7 @@ function getChildrenGroups(parentNode)
     var result = [];
     var children = $(parentNode).children();
     for (var i = 0; i < children.length; i++)
-        if (children[i].localName === "group")
-            result.push(new XML3DEntity(children[i]));
+        result.push(new XML3DElement(children[i]));
 
     return result;
 }
@@ -91,12 +86,20 @@ var XML3DScene = SceneWrapper.$extend(
             return null;
         },
 
-        configuration : {}
+        isValueElement : function(elementName)
+        {
+            return ((elementName.indexOf("int") === 0) || (elementName.indexOf("float") === 0) || (elementName === "bool"));
+        },
+
+        configuration : {},
+        childElements : {}
     },
 
     __init__ : function(canvasId)
     {
-        this.$super();
+        this.$super("xml3d");
+        this.entityString = "element";
+        this.componentString = "element";
 
         this.canvas = $("#" + canvasId);
         this.canvasDOM = document.getElementById(canvasId);
@@ -104,11 +107,12 @@ var XML3DScene = SceneWrapper.$extend(
         // Assign an 'application-specific' id to all elements
         this.canvas.find("*").each(function(index)
         {
-            $(this).data("editorid", XML3DScene.nextId());
+            $(this).data("editorId", XML3DScene.nextId());
         });
 
         var allClasses = XML3D.classInfo;
         var conf = XML3DScene.configuration;
+        var childElements = XML3DScene.childElements;
 
         for (var i in allClasses)
         {
@@ -209,6 +213,16 @@ var XML3DScene = SceneWrapper.$extend(
                     conf[i][j]["allowedValues"] = null;
                 }
             }
+
+            // Taken from the XML3D specification
+            if (i === "xml3d" || i === "data" || i === "group" || i === "mesh" || i === "shader" || i === "lightshader" || i === "proto")
+                childElements[i] = ["xml3d", "data", "defs", "group", "mesh", "transform", "shader", "light", "lightshader", "script", "proto", "float", "float2", "float3", "float4", "float4x4", "int", "int4", "bool", "texture", "img", "video", "view"];
+            else if (i === "defs")
+                childElements[i] = ["data", "group", "mesh", "transform", "shader", "light", "lightshader", "script", "proto", "img", "video", "view"];
+            else if (i === "texture")
+                childElements[i] = ["img", "video"];
+            else
+                childElements[i] = [];
         }
     },
 
@@ -224,23 +238,28 @@ var XML3DScene = SceneWrapper.$extend(
     {
         var result = XML3DScene.elementById(this.canvas, entityId);
 
-        if (isNotNull(result));
-            return new XML3DEntity(result);
+        if (isNotNull(result))
+            return new XML3DElement(result);
 
         return null;
     },
 
     createEntity : function(components)
     {
-        var groupElement = document.createElement("group");
-        var newEntity = new XML3DEntity(groupElement);
-        this.canvasDOM.appendChild(groupElement);
+        return this.createElement("group", components);
+    },
 
-        if (isNotNull(components) && components instanceof Array)
-            for (var i = 0; i < components.length; i++)
-                newEntity.createComponent(components[i], "");
+    createElement : function(type, children)
+    {
+        var element = document.createElement(type);
+        var newElement = new XML3DElement(element);
+        this.canvasDOM.appendChild(element);
 
-        return new XML3DEntity(groupElement);
+        if (isNotNull(children) && children instanceof Array)
+            for (var i = 0; i < children.length; i++)
+                newElement.createComponent(children[i], "");
+
+        return newElement;  
     },
 
     removeEntity : function(entityId)
@@ -251,15 +270,21 @@ var XML3DScene = SceneWrapper.$extend(
             $(result).remove();
     },
 
-    registeredComponents : function()
+    registeredComponents : function(typeName)
     {
         var result = [];
-        for (var i in XML3D.classInfo)
+        if (isNull(typeName))
+            typeName = "xml3d";
+
+        var childElements = XML3DScene.childElements[typeName];
+
+        for (var i = 0; i < childElements.length; i++)
             result.push(
                 {
-                    typeName : i,
-                    typeId : 0
+                    name : childElements[i],
+                    value : 0
                 });
+
 
         return result;
     },
@@ -381,8 +406,8 @@ var XML3DScene = SceneWrapper.$extend(
         var componentNode = mutationEvent.relatedNode;
         var parentGroup = getParentGroup(componentNode);
 
-        var entityPtr = new XML3DEntity(parentGroup);
-        var componentPtr = new XML3DComponent(componentNode, entityPtr);
+        var entityPtr = new XML3DElement(parentGroup);
+        var componentPtr = new XML3DElement(componentNode);
         var attributeName = mutationEvent.attrName;
         var attributeValue = mutationEvent.newValue;
         var attributeIndex = -1;
@@ -406,10 +431,12 @@ var XML3DScene = SceneWrapper.$extend(
     }    
 });
 
-var XML3DEntity = EntityWrapper.$extend(
+var XML3DElement = EntityWrapper.$extend(
 {
     __init__ : function(entityPtr)
     {
+        this.typeName = entityPtr.localName;
+
         var entity = $(entityPtr);
         var id = "";
         var name = isNull(entity.attr("id")) ? "" : entity.attr("id");
@@ -421,68 +448,76 @@ var XML3DEntity = EntityWrapper.$extend(
             entity.data("editorId", id);
         }
 
-        var fixedCompId = entity.data("fixedComponentId");
-        if (isNull(fixedCompId))
-        {
-            fixedCompId = XML3DScene.nextId();
-            entity.data("fixedComponentId", fixedCompId);
-        }
-
         this.$super(id, name, false, false);
         this._ptr = entityPtr;
-        this.fixedComponentId = fixedCompId;
     },
 
     parentId : function()
     {
-        return $(this._ptr).parent().data("editorId");
-    },
-
-    children : function()
-    {
         if (this.expired())
-            return [];
+            return null;
 
-        return getChildrenGroups(this._ptr);
+        var id = $(this._ptr).parent().data("editorId");
+        return (isNull(id) ? null : id);
     },
 
     setName : function(name)
     {
-        $(this._ptr).attr("id", name);
+        if (this.expired())
+            return;
+
+        if (XML3DScene.isValueElement(this.typeName))
+            this._ptr.setAttribute("name", name);
+        else
+            this._ptr.setAttribute("id", name);
     },
 
     getName : function()
     {
-        var name = $(this._ptr).attr("id");
+        if (this.expired())
+            return "";
+
+        var name = "";
+        if (XML3DScene.isValueElement(this.typeName))
+            name = $(this._ptr).attr("name");
+        else
+            name = $(this._ptr).attr("id");
+
         return isNull(name) ? "" : name;
     },
 
-    numberOfComponents : function()
+    isDynamic : function()
     {
-        var result = 1;
-        if (this.expired())
-            return result;
+        return false;
+    },
 
-        var children = $(this._ptr).children();
-        for (var i = 0; i < children.length; i++)
-            if (children[i].localName !== "group")
-                ++result;
+    setTemporary : function(temporary)
+    {
 
-        return result;
     },
 
     components : function()
     {
         var result = [];
-        result.push(new XML3DFixedComponent(this));
-
         if (this.expired())
             return result;
 
         var children = $(this._ptr).children();
         for (var i = 0; i < children.length; i++)
-            if (children[i].localName !== "group")
-                result.push(new XML3DComponent(children[i], this));
+            result.push(new XML3DElement(children[i]));
+
+        return result;
+    },
+
+    attributes : function()
+    {
+        var result = [];
+        if (this.expired())
+            return result;
+
+        var conf = XML3DScene.configuration[this.typeName];
+        for (var i in conf)
+            result.push(new XML3DAttribute(i, conf[i].type, this));
 
         return result;
     },
@@ -496,15 +531,39 @@ var XML3DEntity = EntityWrapper.$extend(
 
         if (isNotNull(name) && name !== "")
         {
-            if (XML3DComponent.isValueElement(typeName))
+            var isValueElement = XML3DScene.isValueElement(typeName);
+            if (isValueElement)
                 newComponent.setAttribute("name", name);
             else
                 newComponent.setAttribute("id", name);
         }
 
         this._ptr.appendChild(newComponent);
+        return new XML3DElement(newComponent);
+    },
 
-        return new XML3DComponent(newComponent, this);
+    createAttribute : function(typeId, name)
+    {
+        return false;
+    },
+
+    attributeByName : function(name)
+    {
+        if (this.expired())
+            return null;
+
+        var typeId = XML3DScene.configuration[this.typeName][name].type;
+        return new XML3DAttribute(name, typeId, this);
+    },
+
+    getAttributeByIndex : function(index)
+    {
+        return null;
+    },
+
+    removeAttribute : function(index)
+    {
+        return false;
     },
 
     hasComponent : function(type, name)
@@ -524,13 +583,12 @@ var XML3DEntity = EntityWrapper.$extend(
         if (this.expired())
             return null;
 
-        var fixedCompId = $(this._ptr).data("fixedComponentId");
-        if (isNotNull(fixedCompId) && componentId === fixedCompId)
-            return new XML3DFixedComponent(this);
+        if (componentId === this.id)
+            return this;
 
         var component = XML3DScene.elementById($(this._ptr), componentId);
         if (isNotNull(component))
-            return new XML3DComponent(component, this);
+            return new XML3DElement(component);
 
         return null;
     },
@@ -579,181 +637,6 @@ var XML3DEntity = EntityWrapper.$extend(
     */
 });
 
-var XML3DComponent = ComponentWrapper.$extend(
-{
-    __classvars__ :
-    {
-        dataTypes : ["int", "int4", "float", "float2", "float3", "float4", "float4x4", "bool"],
-        isValueElement : function(elementName)
-        {
-            for (var i in XML3DComponent.dataTypes)
-            {
-                if (XML3DComponent.dataTypes[i] === elementName)
-                    return true;
-            }
-
-            return false;
-        },
-
-        create : function(typeName)
-        {
-
-        }
-    },
-
-    __init__ : function(componentPtr, parentEntity)
-    {
-        var component = $(componentPtr);
-        var id = "";
-        if (isNotNull(component.data("editorId")))
-            id = component.data("editorId");
-        else
-        {
-            id = XML3DScene.nextId();
-            component.data("editorId", id);
-        }
-
-        var name = "";
-        if (XML3DComponent.isValueElement(componentPtr.localName))
-            name = component.attr("name");
-        else
-            name = component.attr("id");
-
-        if (isNull(name))
-            name = "";
-
-        this.$super(id, name, componentPtr.localName, parentEntity.id);
-        this._ptr = componentPtr;
-    },
-
-    isDynamic : function()
-    {
-        return false;
-    },
-
-    attributes : function()
-    {
-        var result = [];
-        if (this.expired())
-            return result;
-
-        var conf = XML3DScene.configuration[this.typeName];
-        for (var i in conf)
-            result.push(new XML3DAttribute(i, conf[i].type, this));
-
-        return result;
-    },
-
-    createAttribute : function(typeId, name)
-    {
-        if (this.expired())
-            return false;
-
-        return false;
-    },
-
-    attributeByName : function(name)
-    {
-        if (this.expired())
-            return null;
-
-        var typeId = XML3DScene.configuration[this.typeName][name].type;
-        return new XML3DAttribute(name, typeId, this);
-    },
-
-    getAttributeByIndex : function(index)
-    {
-        if (this.expired())
-            return null;
-
-        return null;
-    },
-
-    removeAttribute : function(index)
-    {
-        if (this.expired())
-            return false;
-
-        return false;
-    },
-
-    onAttributeChanged : function(context, callback)
-    {
-        if (this.expired())
-            return 0;
-
-        this.registerCallback("onAttributeChanged", context, callback);
-        $(this._ptr).on("DOMAttrModified", this._onAttributeChanged.bind(this));
-
-        return {
-            ptr : $(this._ptr),
-            eventName : "DOMAttrModified"
-        };
-    },
-
-    _onAttributeChanged : function(jqMutationEvent)
-    {
-        var mutationEvent = jqMutationEvent.originalEvent;
-        if (mutationEvent.attrChange !== MutationEvent.MODIFICATION)
-            return;
-
-        var componentNode = mutationEvent.relatedNode;
-        var parentGroup = getParentGroup(componentNode);
-
-        var entityPtr = new XML3DEntity(parentGroup);
-        var componentPtr = new XML3DComponent(componentNode, entityPtr);
-        var attributeName = mutationEvent.attrName;
-        var attributeValue = mutationEvent.newValue;
-        var attributeIndex = -1;
-
-        this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-    }
-});
-
-// A placeholder component for the group attributes
-var XML3DFixedComponent = ComponentWrapper.$extend(
-{
-    __init__ : function(entityPtr)
-    {
-        var id = entityPtr.fixedComponentId;
-        var name = "Group attributes";
-        var typeName = "fixed";
-        var parentId = entityPtr.id;
-
-        this.$super(id, name, typeName, parentId);
-
-        this._ptr = entityPtr._ptr;
-        this.isFixed = true;
-    },
-
-    isDynamic : function()
-    {
-        return false;
-    },
-
-    attributes: function()
-    {
-        var result = [];
-        if (this.expired())
-            return result;
-
-        var conf = XML3DScene.configuration["group"];
-        for (var i in conf)
-            result.push(new XML3DAttribute(i, conf[i].type, this));
-
-        return result;
-    },
-
-    attributeByName : function(name)
-    {
-        if (this.expired())
-            return null;
-
-        var typeId = XML3DScene.configuration["group"][name].type;
-        return new XML3DAttribute(name, typeId, this);
-    }
-});
-
 var XML3DAttribute = AttributeWrapper.$extend(
 {
     __classvars__ : 
@@ -778,7 +661,7 @@ var XML3DAttribute = AttributeWrapper.$extend(
     __init__ : function(name, typeId, owner)
     {
         this.$super(-1, typeId, name, owner);
-        this.parentType = owner.isFixed ? "group" : owner.typeName;
+        this.parentType = owner.typeName;
         if (typeId !== XML3DAttribute.Array)
             this._ptr = owner._ptr.getAttributeNode(name);
     },
@@ -885,8 +768,8 @@ var XML3DRaycastResult = RaycastResult.$extend(
         if (isNotNull(hitNode))
         {
             var parentGroup = getParentGroup(hitNode);
-            this.entity = new XML3DEntity(parentGroup);
-            this.component = new XML3DComponent(hitNode, this.entity);
+            this.entity = new XML3DElement(parentGroup);
+            this.component = new XML3DElement(hitNode);
         }
 
         // TODO: Implement when XML3D has getElementByRay implemented
@@ -906,6 +789,9 @@ var XML3DEditor = IEditor.$extend(
         this.mainContent = $("#" + mainContentDiv);
 
         this.$super();
+
+        this.ui.sceneTree.addEntityButton.button("option", "label", "Add new element...");
+        this.ui.ecEditor.addCompButton.button("option", "label", "Add new child element");
     },
 
     width : function()
@@ -926,6 +812,164 @@ var XML3DEditor = IEditor.$extend(
     addWidget : function(element)
     {
         this.mainContent.append(element);
+    },
+
+    onAddEntityClicked : function()
+    {
+        var sceneTree = $("#scene-tree-holder");
+        if (isNull(sceneTree))
+            return;
+
+        var activeNode = sceneTree.fancytree("getActiveNode");
+
+        var inputNewElementId = "input-newElementName";
+        var comboElementTypeId = "combobox-elementList";
+        var draggableElementsId = "draggableList-elements";
+        var buttons = {
+            "Add element" : function()
+            {
+                var childrenElements = [];
+                var droppedElements = $(this).find("div[id^='dropped-']");
+                for (var i = 0; i < droppedElements.length; i++)
+                    childrenElements.push($(droppedElements[i]).data("dropData"));
+
+                var elementName = $("#" + inputNewElementId).val();
+                var elementType = $("#" + comboElementTypeId).find(":selected").text();
+                var elementPtr = IEditor.scene.createElement(elementType, childrenElements);
+                if (elementName !== "")
+                    elementPtr.setName(elementName);
+
+                $(this).dialog("close");
+                $(this).remove();
+
+                /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
+                if (!IEditor.scene.isRegistered("onEntityCreated"))
+                    IEditor.Instance.onEntityCreated(elementPtr);
+            },
+            "Cancel" : function()
+            {
+                $(this).dialog("close");
+                $(this).remove();
+            }
+        }
+        var elementNames = [];
+        var registeredElements = IEditor.scene.registeredComponents();
+        for (var i = 0; i < registeredElements.length; i++)
+            elementNames.push(registeredElements[i].name);
+
+        var draggableChildrenLabel = "Available child elements";
+        var draggableNoChildLabel = "<i>No children available for this element</i>";
+        var draggableLabel = elementNames.length === 0 ? draggableNoChildLabel : draggableChildrenLabel;
+
+        var dialog = new ModalDialog("AddElement", "Add new element", 550, 200);
+        var dialogComboBox = dialog.appendComboBox(comboElementTypeId, "Select element type", registeredElements);
+        dialog.appendInputBox(inputNewElementId, "Name this element (optional)", "string");
+        var draggableList = dialog.appendDraggableList(draggableElementsId, draggableLabel, elementNames);
+        var droppable = dialog.appendDroppable("droppable-elements", "Drag the elements you want to be added as children of this element", true);
+        dialog.addButtons(buttons);
+
+        dialogComboBox.on("change", function(){
+            draggableList.empty();
+            droppable.empty();
+
+            var selected = $(this).find(":selected").text();
+            var registeredElems = IEditor.scene.registeredComponents(selected);
+            var availableChildren = [];
+            for (var i = 0; i < registeredElems.length; i++)
+                availableChildren.push(registeredElems[i].name);
+
+            draggableLabel = availableChildren.length === 0 ? draggableNoChildLabel : draggableChildrenLabel;
+            dialog.appendDraggableList(draggableElementsId, draggableLabel, availableChildren);
+
+            var droppableLabel = $("#label-droppable-elements");
+            if (availableChildren.length === 0)
+            {
+                droppable.hide();
+                droppableLabel.hide();
+            }
+            else
+            {
+                droppable.show();
+                droppableLabel.show();
+            }
+        });
+
+        dialog.exec();
+    },
+
+    onAddComponentClicked : function()
+    {
+        var entityId = $(this).data("targetEntity");
+        if (isNull(entityId))
+            return;
+
+        var entityPtr = IEditor.scene.entityById(entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var registeredComponents = IEditor.scene.registeredComponents(entityPtr.typeName);
+        var dialog = new ModalDialog("AddElement", "Add new child element", 450, 250);
+        var comboboxElements = dialog.appendComboBox("combobox-elementList", "Select element type:   ", registeredComponents);
+        var inputCompName = dialog.appendInputBox("input-newElementName", "Name this element (optional):", "string");
+
+        var buttons = {
+            "Add element" : function()
+            {
+                var compTypeName = comboboxElements.find(":selected").text();
+                var compName = inputCompName.val();
+
+                var newComponent = entityPtr.createComponent(compTypeName, compName);
+
+                $(this).dialog("close");
+                $(this).remove();
+
+                /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
+                if (!IEditor.scene.isRegistered("onComponentCreated") && isNotNull(newComponent))
+                    IEditor.Instance.onComponentCreated(entityPtr, newComponent);
+            },
+            "Cancel" : function()
+            {
+                $(this).dialog("close");
+                $(this).remove();
+            }
+        };
+
+        dialog.addButtons(buttons);
+        dialog.exec();
+    },
+
+    createTreeItemForEntity : function(entityPtr, parentNode)
+    {
+        this.createTreeItemForElement(entityPtr, parentNode);
+    },
+
+    createTreeItemForComponent : function(componentPtr, parentNode)
+    {
+        this.createTreeItemForElement(componentPtr, parentNode)
+    },
+
+    createTreeItemForElement : function(elementPtr, parentNode)
+    {
+        var childNode = parentNode.addChildren({
+            title : this.getNodeTitleForElement(elementPtr),
+            key : "sceneNode-" + elementPtr.id
+        });
+
+        var components = elementPtr.components();
+        for (var i = 0; i < components.length; i++)
+            this.createTreeItemForElement(components[i], childNode);
+    },
+
+    removeTreeItem : function(entityPtr, componentPtr)
+    {
+        var node = null;
+        if (isNotNull(componentPtr))
+            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.id);
+        else
+            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+
+        if (isNotNull(node))
+            node.remove();
     },
 
     registerKeyEventCallback : function(context, callback)

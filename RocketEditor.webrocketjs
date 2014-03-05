@@ -52,7 +52,7 @@ var RocketScene = SceneWrapper.$extend(
 {
     __init__ : function()
     {
-        this.$super();
+        this.$super("rocket");
     },
 
     entities : function()
@@ -295,14 +295,6 @@ var RocketEntity = EntityWrapper.$extend(
     getName : function()
     {
         return this._ptr.getName();
-    },
-
-    numberOfComponents : function()
-    {
-        if (this.expired())
-            return 0;
-
-        return this._ptr.components.length;
     },
 
     components : function()

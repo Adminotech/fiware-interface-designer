@@ -66,9 +66,12 @@ var IWrapper = Class.$extend(
 
 var SceneWrapper = IWrapper.$extend(
 {
-    __init__ : function()
+    __init__ : function(sceneType)
     {
         this.$super();
+        this.type = sceneType;
+        this.entityString = "entity";
+        this.componentString = "component";
     },
 
     // Main scene methods
@@ -149,11 +152,6 @@ var EntityWrapper = IWrapper.$extend(
         return null;
     },
 
-    children : function()
-    {
-        return [];
-    },
-
     // pure virtual
     setName : function(name) {},
     getName : function() {},
@@ -179,8 +177,17 @@ var ComponentWrapper = IWrapper.$extend(
         this.id = isNull(id) ? -1 : id;
         this.name = isNull(name) ? "" : name;
         this.typeName = isNull(type) ? "" : type;
-        this.parentId = parentId;
-        this.isFixed = false;
+        this.pId = parentId;
+    },
+
+    parentId : function()
+    {
+        return this.pId;
+    },
+
+    getName : function()
+    {
+        return this.name;
     },
 
     // pure virtual
@@ -312,10 +319,12 @@ var IEditor = IWrapper.$extend(
         this.ui = {};                                       // JSON
         this.enabled = false;
         this.isECEditor = false;
-        this.noSelectionStr = "(No entities selected)";     // String
+        this.noSelectionStr = "<i>(No entities selected)</i>";     // String
         this.sceneEvents = [];
         this.componentEvents = [];                         // Array of EventWrapper
         this.transformEditor = null;
+
+        this.accordionHistory = {};
 
         this.toggleEditorShortcut = {
             meta : "shift",
@@ -401,8 +410,13 @@ var IEditor = IWrapper.$extend(
             background-color  : #000000; \
             color             : #FFFFFF; }");
 
+        var accordionStyle = $("<style/>"); // #F7EEDC
+        accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
+        .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
+
         $("head").append(invalidDataClass);
         $("head").append(menuItemsClass);
+        $("head").append(accordionStyle);
 
         var panelHeight = this.height();
 
@@ -410,7 +424,7 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor = {};
 
         this.ui.sceneTree.panel = $("<div/>");
-        this.ui.sceneTree.panel.attr("id", "webrocket-editor-leftpanel");
+        this.ui.sceneTree.panel.attr("id", "scenetree-panel");
         this.ui.sceneTree.panel.css({
             "position"          : "absolute",
             "top"               : 0,
@@ -431,7 +445,7 @@ var IEditor = IWrapper.$extend(
         });
 
         this.ui.ecEditor.panel = $("<div/>");
-        this.ui.ecEditor.panel.attr("id", "webrocket-editor-rightpanel");
+        this.ui.ecEditor.panel.attr("id", "editor-panel");
         this.ui.ecEditor.panel.css({
             "position"          : "absolute",
             "top"               : 0,
@@ -456,7 +470,7 @@ var IEditor = IWrapper.$extend(
         this.ui.sceneTree.addEntityButton.css({
             "position" : "relative",
             "font-size" : "10px",
-            "min-width": "48%"
+            "min-width": "50%"
         });
         this.ui.sceneTree.addEntityButton.html("Add new entity...");
         this.ui.sceneTree.addEntityButton.button({
@@ -472,7 +486,7 @@ var IEditor = IWrapper.$extend(
         this.ui.sceneTree.expColButton.css({
             "position" : "relative",
             "font-size" : "10px",
-            "min-width": "48%"
+            "min-width": "49%"
         });
         this.ui.sceneTree.expColButton.html("Expand/Collapse");
         this.ui.sceneTree.expColButton.button({
@@ -499,7 +513,7 @@ var IEditor = IWrapper.$extend(
             "top" : 20,
             "left" : 10,
             "width" : "95%",
-            "height" : "80%",
+            "height" : "90%",
             "font-size" : "10px",
         });
 
@@ -508,14 +522,36 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.entityLabel.css({
             "position" : "relative",
             "top" : 5,
-            "left" : 0,
-            "width" : "98%",
-            "height" : "5%",
+            "left" : 10,
+            "width" : "94%",
+            "height" : "20px",
             "font-family" : "Verdana",
             "font-size" : "16px",
-            "text-align" : "center"
+            "text-align" : "center",
+            "border" : "2px dashed #a1a1a1",
+            "padding" : "5px 0 5px 0",
+            "margin" : "0 0 10px 0",
+            "background" : "#DDDDDD",
+            "border-radius" : "10px"
         });
         this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
+
+        this.ui.ecEditor.upButton = $("<button/>", {
+            id : "up-parent-button"
+        });
+        this.ui.ecEditor.upButton.css({
+            "position" : "absolute",
+            "top" : 10,
+            "left" : 20,
+            "font-size" : "10px",
+            "z-index" : 5,
+        })
+        this.ui.ecEditor.upButton.html("Up");
+        this.ui.ecEditor.upButton.button({
+            icons : {
+                primary : "ui-icon-arrowreturnthick-1-n"
+            }
+        });
 
         this.ui.ecEditor.addCompButton = $("<button/>", {
             id : "ec-add-component-button"
@@ -561,7 +597,8 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.editCompButton.html("Edit...");
         this.ui.ecEditor.editCompButton.button({
             icons : {
-                primary : "ui-icon-pencil"
+                primary : "ui-icon-pencil",
+                secondary : "ui-icon-locked"
             }
         });
 
@@ -570,6 +607,7 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.buttonsHolder.css({
             "position" : "relative",
             "overflow" : "auto",
+            "top" : 5,
             "left" : 10,
             "width" : "95%",
             "padding" : 0
@@ -585,29 +623,26 @@ var IEditor = IWrapper.$extend(
         this.ui.sceneTree.panel.append(this.ui.sceneTree.buttonsHolder);
         this.ui.sceneTree.panel.append(this.ui.sceneTree.holder);
 
+        this.ui.ecEditor.panel.append(this.ui.ecEditor.upButton);
         this.ui.ecEditor.panel.append(this.ui.ecEditor.entityLabel);
         this.ui.ecEditor.panel.append(this.ui.ecEditor.buttonsHolder);
-
-        var componentHolderHeight = this.ui.ecEditor.panel.height() - 
-            (this.ui.ecEditor.entityLabel.height() 
-            + parseInt(this.ui.ecEditor.entityLabel.css("top"))
-            + this.ui.ecEditor.buttonsHolder.height());
 
         this.ui.ecEditor.holder = $("<div/>");
         this.ui.ecEditor.holder.attr("id", "editor-component-accordions");
         this.ui.ecEditor.holder.css({
             "position"   : "relative",
             "overflow"   : "auto",
-            "top"        : this.ui.ecEditor.entityLabel.height() + this.ui.ecEditor.buttonsHolder.height(),
+            "top"        : 15,
             "left"       : 10,
             "width"      : "95%",
-            "height"     : componentHolderHeight,
+            "height"     : this.componentHolderHeight(),
             "font-size"  : "10px",
             "padding"    : 0
         });
 
         this.ui.ecEditor.panel.append(this.ui.ecEditor.holder);
 
+        this.ui.ecEditor.upButton.hide();
         this.ui.ecEditor.buttonsHolder.hide();
         this.ui.sceneTree.panel.hide();
         this.ui.ecEditor.panel.hide();
@@ -619,6 +654,7 @@ var IEditor = IWrapper.$extend(
         this.createContextMenu();
         this.ui.sceneTree.addEntityButton.click(this, this.onAddEntityClicked);
         this.ui.sceneTree.expColButton.click(this, this.onSTExpColClicked);
+        this.ui.ecEditor.upButton.click(this, this.onUpButtonClicked);
         this.ui.ecEditor.addCompButton.click(this, this.onAddComponentClicked);
         this.ui.ecEditor.editCompButton.click(this, this.onEditButtonClicked);
         this.ui.ecEditor.expColButton.click(this, this.onECExpColClicked);
@@ -712,11 +748,20 @@ var IEditor = IWrapper.$extend(
                 });
         }
 
-        var componentHolderHeight =  this.ui.ecEditor.panel.height() - 
-            (this.ui.ecEditor.entityLabel.height() + parseInt(this.ui.ecEditor.entityLabel.css("top")) + 
-            this.ui.ecEditor.buttonsHolder.height());
+        this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
+    },
 
-        this.ui.ecEditor.holder.css("height", componentHolderHeight);
+    componentHolderHeight : function()
+    {
+        return this.ui.ecEditor.panel.height() - (
+            this.ui.ecEditor.entityLabel.height()
+            + this.ui.ecEditor.buttonsHolder.height()
+            + parseInt(this.ui.ecEditor.upButton.css("top"))
+            + parseInt(this.ui.ecEditor.entityLabel.css("top"))
+            + parseInt(this.ui.ecEditor.buttonsHolder.css("top"))
+            + parseInt(this.ui.ecEditor.entityLabel.css("margin-bottom"))
+            + parseInt(this.ui.ecEditor.entityLabel.css("padding-top"))
+            + parseInt(this.ui.ecEditor.entityLabel.css("padding-bottom")));
     },
 
     setSwitchPanelsShortcut : function(meta, key)
@@ -733,6 +778,10 @@ var IEditor = IWrapper.$extend(
 
     onAddEntityClicked : function()
     {
+        var sceneTree = $("#scene-tree-holder");
+        if (isNull(sceneTree))
+            return;
+
         var inputNewEntityId = "input-newEntityName";
         var checkboxIsLocalId = "checkbox-localEntity";
         var buttons = {
@@ -741,7 +790,7 @@ var IEditor = IWrapper.$extend(
                 var componentNames = [];
                 var droppedComponents = $(this).find("div[id^='dropped-']");
                 for (var i = 0; i < droppedComponents.length; i++)
-                    componentNames.push($(droppedComponents[i]).data("component"));
+                    componentNames.push($(droppedComponents[i]).data("dropData"));
 
                 var entityName = $("#" + inputNewEntityId).val();
                 var isLocal = $("#" + checkboxIsLocalId).is(":checked");
@@ -752,10 +801,6 @@ var IEditor = IWrapper.$extend(
 
                 $(this).dialog("close");
                 $(this).remove();
-
-                /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                if (!IEditor.scene.isRegistered("onEntityCreated"))
-                    IEditor.Instance.onEntityCreated(entityPtr);
             },
             "Cancel" : function()
             {
@@ -764,7 +809,7 @@ var IEditor = IWrapper.$extend(
             }
         };
 
-        var dialog = new ModalDialog("AddEntity", "Add new entity", 550, 450);
+        var dialog = new ModalDialog("AddEntity", "Add new entity", 550, 300);
         dialog.appendInputBox(inputNewEntityId, "Name this entity (optional)", "string");
         dialog.appendInputBox(checkboxIsLocalId, "Create local entity", "checkbox");
 
@@ -795,6 +840,27 @@ var IEditor = IWrapper.$extend(
         $(this).data("toggle", newToggle);
     },
 
+    onUpButtonClicked : function()
+    {
+        var entityId = $(this).data("targetEntity");
+        if (isNull(entityId))
+            return;
+
+        var entityPtr = IEditor.scene.entityById(entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var parentId = entityPtr.parentId();
+        if (isNull(parentId))
+            return;
+
+        var parentEntity = IEditor.scene.entityById(parentId);
+        if (isNull(parentEntity))
+            return;
+
+        IEditor.Instance.selectEntity(parentEntity);
+    },
+
     onAddComponentClicked : function()
     {
         var entityId = $(this).data("targetEntity");
@@ -805,7 +871,7 @@ var IEditor = IWrapper.$extend(
         if (isNull(entityPtr))
             return;
 
-        var comps = new Array();
+        var comps = [];
         var registeredComponents = IEditor.scene.registeredComponents();
         for (var i = 0; i < registeredComponents.length; i++)
             comps.push({
@@ -845,10 +911,6 @@ var IEditor = IWrapper.$extend(
 
                 $(this).dialog("close");
                 $(this).remove();
-
-                /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                if (!IEditor.scene.isRegistered("onComponentCreated") && isNotNull(newComponent))
-                    IEditor.Instance.onComponentCreated(entityPtr, newComponent);
             },
             "Cancel" : function()
             {
@@ -875,11 +937,11 @@ var IEditor = IWrapper.$extend(
 
     onEntityRemoved : function(entityPtr)
     {
-        if (entityPtr.id === this.currentObject.id)
-            this.selectEntity(null);
+        if (isNotNull(this.currentObject))
+            if (entityPtr.id === this.currentObject.id)
+                this.selectEntity(null);
 
-        var entityToRemove = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        entityToRemove.remove();
+        this.removeTreeItem(entityPtr);
     },
 
     onEditButtonClicked : function()
@@ -891,6 +953,14 @@ var IEditor = IWrapper.$extend(
         toggle = !toggle;
 
         $(this).data("toggle", toggle);
+
+        var editButtonSecondIcon = toggle ? "ui-icon-unlocked" : "ui-icon-locked";
+        $(this).button("option", {
+            icons : {
+                primary : "ui-icon-pencil",
+                secondary : editButtonSecondIcon
+            }
+        });
 
         var addAttrButtons = $("button[id^='addAttrButton-']");
         for (var i = addAttrButtons.length - 1; i >= 0; i--)
@@ -912,6 +982,13 @@ var IEditor = IWrapper.$extend(
                 $(removeButtons[i]).show("slow");
             else
                 $(removeButtons[i]).hide("slow");
+
+        var editButtons = $("button[id^='editButton-']");
+        for (var i = editButtons.length - 1; i >= 0; i--)
+            if (toggle === true)
+                $(editButtons[i]).show("slow");
+            else
+                $(editButtons[i]).hide("slow");
     },
 
     onECExpColClicked : function()
@@ -990,16 +1067,20 @@ var IEditor = IWrapper.$extend(
 
     selectEntity : function(entityPtr, activeComponent)
     {
+        if (isNotNull(this.currentObject))
+            this.saveAccordionHistory();
+
         this.ui.ecEditor.holder.off();
         this.ui.ecEditor.holder.empty();
+        this.ui.ecEditor.upButton.data("targetEntity", -1);
         this.ui.ecEditor.addCompButton.data("targetEntity", -1);
-        this.ui.ecEditor.editCompButton.data("toggle", false);
 
         if (isNull(entityPtr))
         {
             this.currentObject = null;
             this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
 
+            this.ui.ecEditor.upButton.hide();
             this.ui.ecEditor.buttonsHolder.hide();
 
             if (isNotNull(this.transformEditor))
@@ -1012,10 +1093,15 @@ var IEditor = IWrapper.$extend(
                 this.transformEditor.setTargetEntity(entityPtr);
 
             this.currentObject = entityPtr;
+            this.ui.ecEditor.upButton.data("targetEntity", entityPtr.id);
             this.ui.ecEditor.addCompButton.data("targetEntity", entityPtr.id);
             this.populateComponents(entityPtr, activeComponent);
 
             this.ui.ecEditor.buttonsHolder.show();
+            if (isNotNull(entityPtr.parentId()))
+                this.ui.ecEditor.upButton.show();
+            else
+                this.ui.ecEditor.upButton.hide();
         }
     },
 
@@ -1036,6 +1122,7 @@ var IEditor = IWrapper.$extend(
                 click : function(element){
                     var node = $.ui.fancytree.getNode(element);
                     var target = node.key.split("-");
+
                     var entityId = -1;
                     var componentId = -1;
                     if (target.length >= 2)
@@ -1060,6 +1147,8 @@ var IEditor = IWrapper.$extend(
                     if (target.length >= 3)
                         componentId = parseInt(target[2]);
 
+                    var entStr = IEditor.scene.entityString;
+                    var compStr = IEditor.scene.componentString;
                     var entity = IEditor.scene.entityById(entityId);
                     if (isNull(entity))
                         return;
@@ -1069,8 +1158,8 @@ var IEditor = IWrapper.$extend(
                         {
                             var confirmDialog = ModalDialog.confirmationDialog(
                                 "RemoveComponent", 
-                                "Remove component", 
-                                "Are you sure that you want to remove this component?",
+                                "Remove " + compStr, 
+                                "Are you sure that you want to remove this " + compStr + "?",
                                 function(){
                                     /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
                                     if (!IEditor.scene.isRegistered("onComponentRemoved"))
@@ -1087,8 +1176,8 @@ var IEditor = IWrapper.$extend(
                         {
                             var confirmDialog = ModalDialog.confirmationDialog(
                                 "RemoveEntity", 
-                                "Remove entity with ID " + entityId, 
-                                "Are you sure that you want to remove this entity?",
+                                "Remove " + entStr + " with ID " + entityId, 
+                                "Are you sure that you want to remove this " + entStr + "?",
                                 function(){
                                     /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
                                     if (!IEditor.scene.isRegistered("onEntityRemoved"))
@@ -1147,6 +1236,34 @@ var IEditor = IWrapper.$extend(
         this.sceneEvents.push(IEditor.scene.attributeChanged(this, this.onAllAttributeChanges));
     },
 
+    saveAccordionHistory : function()
+    {
+        var previousHistory = this.accordionHistory[this.currentObject.id];
+        if (isNotNull(previousHistory))
+            previousHistory.length = 0;
+
+        var history = this.accordionHistory[this.currentObject.id];
+        history = [];
+
+        var atLeastOneActive = false;
+        var accordions = $("div[id^='accordion-']");
+        for (var i = 0; i < accordions.length; i++)
+        {
+            var targetCompId = $(accordions[i]).data("targetComponent");
+            var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
+            if (isActive)
+                history.push($(accordions[i]).data("targetComponent"));
+        }
+
+        if (history.length !== 0)
+            this.accordionHistory[this.currentObject.id] = history;
+    },
+
+    getAccordionHistory : function(entityId)
+    {
+        return (isNull(this.accordionHistory[entityId]) ? [] : this.accordionHistory[entityId]);
+    },
+
     createTreeItemForEntity : function(entityPtr, parentNode)
     {
         var childNode = parentNode.addChildren({
@@ -1154,22 +1271,30 @@ var IEditor = IWrapper.$extend(
             key : "sceneNode-" + entityPtr.id
         });
 
-        var children = entityPtr.children();
-        for (var i = 0; i < children.length; i++)
-            this.createTreeItemForEntity(children[i], childNode);
-
         var components = entityPtr.components();
         for (var i = 0; i < components.length; i++)
-        {
-            var component = components[i];
-            if (component.isFixed)
-                continue;
+            this.createTreeItemForComponent(components[i], childNode);
+    },
 
-            childNode.addChildren({
-                title : this.getNodeTitleForComponent(component),
-                key : "sceneNode-" + entityPtr.id + "-" + component.id
-            });
-        }
+    createTreeItemForComponent : function(componentPtr, parentNode)
+    {
+        var fullName = this.getNodeTitleForComponent(componentPtr);
+        var childNode = parentNode.addChildren({
+            title : fullName,
+            key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
+        });
+    },
+
+    removeTreeItem : function(entityPtr, componentPtr)
+    {
+        var node = null;
+        if (isNull(componentPtr))
+            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        else
+            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
+
+        if (isNotNull(node))
+            node.remove();
     },
 
     getNodeTitleForEntity : function(entityPtr, setUnnamed)
@@ -1193,13 +1318,12 @@ var IEditor = IWrapper.$extend(
         return (componentTypeName + componentName);
     },
 
-    createTreeItemForComponent : function(componentPtr, parentNode)
+    getNodeTitleForElement : function(elementPtr)
     {
-        var fullName = this.getNodeTitleForComponent(componentPtr);
-        parentNode.addChildren({
-            title : fullName,
-            key : "sceneNode-" + componentPtr.parentId + "-" + componentPtr.id
-        });
+        var elementName = (elementPtr.getName().length > 0 ? " (" + elementPtr.getName() + ")" : "");
+        var elementType = IEditor.scene.componentNameInHumanFormat(elementPtr.typeName);
+
+        return ("[" + elementPtr.id + "] " + elementType + elementName);
     },
 
     renameEntityNode : function(entityPtr, setUnnamed)
@@ -1213,7 +1337,7 @@ var IEditor = IWrapper.$extend(
 
     renameComponentNode : function(componentPtr)
     {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId + "-" + componentPtr.id);
+        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id);
         if (isNull(treeItem))
             return;
 
@@ -1256,9 +1380,7 @@ var IEditor = IWrapper.$extend(
         if (componentPtr.typeName === "EC_Name")
             this.renameEntityNode(entityPtr, true);
 
-        var componentToRemove = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
-        if (isNotNull(componentToRemove))
-            componentToRemove.remove();
+        this.removeTreeItem(entityPtr, componentPtr);
     },
 
     onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
@@ -1268,11 +1390,14 @@ var IEditor = IWrapper.$extend(
 
         if (this.isECEditor)
         {
-            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            if (isNotNull(this.currentObject))
             {
-                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-                if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
+                if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
+                {
+                    this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+                    if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+                        this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
+                }
             }
         }
 
@@ -1289,10 +1414,28 @@ var IEditor = IWrapper.$extend(
         this.componentEvents.length = 0;
 
         var components = entityPtr.components();
+        if (isNotNull(entityPtr.attributes))
+            this.appendAccordionForComponent(entityPtr, true, false);
+
+        var accordionHistory = this.getAccordionHistory(entityPtr.id);
         for (var i = 0; i < components.length; ++i)
         {
             var compId = parseInt(components[i].id);
-            this.appendAccordionForComponent(components[i], compId === activeComponent);
+            var compHistoryIndex = accordionHistory.indexOf(compId);
+            var activateComp = ((compId === activeComponent) || compHistoryIndex !== -1);
+            this.appendAccordionForComponent(components[i], activateComp);
+        }
+
+        var allowedComps = IEditor.scene.registeredComponents(entityPtr.typeName);
+        if (allowedComps.length === 0)
+        {
+            this.ui.ecEditor.editCompButton.button("disable");
+            this.ui.ecEditor.addCompButton.button("disable");
+        }
+        else
+        {
+            this.ui.ecEditor.editCompButton.button("enable");
+            this.ui.ecEditor.addCompButton.button("enable");
         }
 
         this.ui.ecEditor.holder.on("change", "input", this.onAttributesEdit);
@@ -1301,18 +1444,21 @@ var IEditor = IWrapper.$extend(
         // this.ui.ecEditor.holder.sortable();
     },
 
-    appendAccordionForComponent : function(componentPtr, setActive)
+    appendAccordionForComponent : function(componentPtr, setActive, canBeRemoved)
     {
         if (isNull(componentPtr))
             return;
         if (isNull(setActive))
             setActive = false;
+        if (isNull(canBeRemoved))
+            canBeRemoved = true;
 
-        var entAndCompSuffix = componentPtr.parentId + "-" + componentPtr.id;
+        var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
         var accordionId = "accordion-" + entAndCompSuffix;
         var accordion = $("<div/>", {
             id : accordionId
         });
+        accordion.data("targetComponent", componentPtr.id);
 
         var contentHolder = $("<div/>");
         var header = $("<div class='h3'/>");
@@ -1334,7 +1480,7 @@ var IEditor = IWrapper.$extend(
         var removeButtonId = "removeButton-" + entAndCompSuffix;
         var removeButton = $("<button/>", {
             id : removeButtonId,
-            title : "Remove this component"
+            title : "Remove this " + IEditor.scene.componentString
         });
         removeButton.data("parentAccordion", accordionId);
         removeButton.css("float", "right");
@@ -1345,15 +1491,35 @@ var IEditor = IWrapper.$extend(
             text : false
         });
 
+        var editButton = null;
+        if (IEditor.scene.type === "xml3d")
+        {
+            var editButtonId = "editButton-" + componentPtr.id;
+            editButton = $("<button/>", {
+                id : editButtonId,
+                title : "Edit this element"
+            });
+            editButton.data("parentAccordion", accordionId);
+            editButton.css("float", "right");
+            editButton.button({
+                icons : {
+                    primary : "ui-icon-pencil"
+                },
+                text : false
+            });
+        }
+
         var editButtonsVisible = this.ui.ecEditor.editCompButton.data("toggle");
         if (!editButtonsVisible)
         {
             addAttrButton.hide();
             removeButton.hide();
+            if (isNotNull(editButton))
+                editButton.hide();
         }
 
         var compNameNoEC = IEditor.scene.componentNameInHumanFormat(componentPtr.typeName);
-        header.html(compNameNoEC + (componentPtr.name == "" ? "" : " (" + componentPtr.name + ")"));
+        header.html(compNameNoEC + (componentPtr.getName() === "" ? "" : " (" + componentPtr.getName() + ")"));
 
         var content = $("<div/>").css(
         {
@@ -1370,12 +1536,12 @@ var IEditor = IWrapper.$extend(
 
             table.data("componentData", {
                 parentCompId : componentPtr.id,
-                parentEntityId : componentPtr.parentId
+                parentEntityId : componentPtr.parentId()
             });
 
             for (var attr = 0; attr < attributes.length; attr++)
             {
-                var tableRow = this.createRowsForAttribute(componentPtr.parentId, componentPtr.id, attributes[attr].name, attributes[attr]);
+                var tableRow = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributes[attr].name, attributes[attr]);
                 if (tableRow != null)
                     table.append(tableRow);
             }
@@ -1391,8 +1557,12 @@ var IEditor = IWrapper.$extend(
             this.componentEvents.push(componentPtr.onAttributeAboutToBeRemoved(this, this.onAttributeRemove));
         }
 
-        if (!componentPtr.isFixed)
+        if (canBeRemoved)
+        {
             header.append(removeButton);
+            if (isNotNull(editButton))
+                header.append(editButton);
+        }
         if (componentPtr.isDynamic())
             header.append(addAttrButton);
 
@@ -1408,15 +1578,19 @@ var IEditor = IWrapper.$extend(
             heightStyle : "content",
             active : (setActive ? 0 : false)
         });
-
+        accordion.addClass("accStripe");
         addAttrButton.tooltip({
             track : true
         });
         removeButton.tooltip({
             track : true
         });
+        if (isNotNull(editButton))
+            editButton.tooltip({
+                track : true
+            });
 
-        addAttrButton.click( function(event)
+        addAttrButton.click(function(event)
         {
             event.stopPropagation();
             event.preventDefault();
@@ -1483,10 +1657,11 @@ var IEditor = IWrapper.$extend(
                 var entityPtr = IEditor.scene.entityById(entityId);
                 if (isNotNull(entityPtr))
                 {
+                    var compStr = IEditor.scene.componentString;
                     var confirmDialog = ModalDialog.confirmationDialog(
                         "RemoveComponent", 
-                        "Remove component",
-                        "Are you sure that you want to remove this component?",
+                        "Remove " + compStr,
+                        "Are you sure that you want to remove this " + compStr + "?",
                         function()
                         {
                             /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
@@ -1504,12 +1679,27 @@ var IEditor = IWrapper.$extend(
                 }
             }
         });
+
+        if (isNotNull(editButton))
+            editButton.click( function(event)
+            {
+                event.stopPropagation();
+                event.preventDefault();
+
+                var elementId = parseInt($(this).attr("id").split("-")[1]);
+                var entityPtr = IEditor.scene.entityById(elementId);
+                if (isNotNull(entityPtr))
+                    IEditor.Instance.selectEntity(entityPtr);
+            });
     },
 
     createRowsForAttribute : function (entityId, componentId, attrName, attributePtr)
     {
         var element = null;
         var attributeValue = attributePtr.get();
+
+        if (isNull(entityId))
+            entityId = componentId;
 
         var attributeTypeId = attributePtr.typeId;
         var isDynamic = attributePtr.owner.isDynamic();
@@ -1720,7 +1910,7 @@ var IEditor = IWrapper.$extend(
 
     createArrayRow : function(attributePtr, attributeValue, arrayIndex)
     {
-        var entityId = attributePtr.owner.parentId;
+        var entityId = attributePtr.owner.parentId();
         var componentId = attributePtr.owner.id;
         var idOfElement = entityId + "-" + componentId + "-" + attributePtr.name + "-" + arrayIndex;
 
@@ -1838,11 +2028,11 @@ var IEditor = IWrapper.$extend(
 
     onAttributeCreate : function(componentPtr, attributePtr)
     {
-        var suffix = componentPtr.parentId + "-" + componentPtr.id;
+        var suffix = componentPtr.parentId() + "-" + componentPtr.id;
         var targetAccordion = $("#accordion-" + suffix);
 
         var targetTable = $("#table-" + suffix);
-        var tableBody = this.createRowsForAttribute(componentPtr.parentId, componentPtr.id, attributePtr.name, attributePtr);
+        var tableBody = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributePtr.name, attributePtr);
         tableBody.appendTo(targetTable);
 
         targetAccordion.accordion("refresh");
@@ -1850,7 +2040,7 @@ var IEditor = IWrapper.$extend(
 
     onAttributeRemove : function(componentPtr, attributeIndex, attributeName)
     {
-        var suffixAccordion = componentPtr.parentId + "-" + componentPtr.id;
+        var suffixAccordion = componentPtr.parentId() + "-" + componentPtr.id;
         var suffix = suffixAccordion + "-" + attributeName;
         var targetBody = $("#tableBody-" + suffix);
         targetBody.hide("fast", function()
@@ -1871,10 +2061,7 @@ var IEditor = IWrapper.$extend(
         var typeId = attributePtr.typeId;
         var elementName = entity.id + "-" + component.id + "-" + attributeName;
         if (isNull(elementName))
-        {
-            IEditor.scene.logError("A non-existing element was requested in an attribute change: ", elementName);
             return;
-        }
 
         if (IEditor.scene.isAttributeAtomic(typeId))
         {
@@ -1903,21 +2090,32 @@ var IEditor = IWrapper.$extend(
         }
         else if (IEditor.scene.isAttributeTuple(typeId))
         {
-            var xyzw = new Array();
+            var xyzw = [];
             if (!IEditor.scene.isAttributeColor(typeId))
                 xyzw = ["x", "y", "z", "w"];
             else
                 xyzw = ["r", "g", "b", "a"];
 
-            for (var i = 0; i < xyzw.length; i++)
+            if (typeof(attributeValue) === "string")
             {
-                var value = attributeValue[xyzw[i]];
-                if (isNull(value))
-                    return;
-
-                var extElementName = elementName + "-" + xyzw[i];
-                $("#" + extElementName).val(value);
+                var attrValue = attributeValue.split(" ");
+                for (var i = 0; i < attrValue.length; i++)
+                {
+                    var value = attrValue[i];
+                    var extElementName = elementName + "-" + xyzw[i];
+                    $("#" + extElementName).val(value);
+                }
             }
+            else
+                for (var i = 0; i < xyzw.length; i++)
+                {
+                    var value = attributeValue[xyzw[i]];
+                    if (isNull(value))
+                        return;
+
+                    var extElementName = elementName + "-" + xyzw[i];
+                    $("#" + extElementName).val(value);
+                }
         }
         else if (IEditor.scene.isAttributeArray(typeId))
         {
@@ -2018,9 +2216,12 @@ var ModalDialog = Class.$extend(
             this.buttons = buttons;
     },
 
-    appendLabel : function(text)
+    appendLabel : function(text, id)
     {
         var labelElement = $("<label/>");
+        if (isNotNull(id) && id !== "")
+            labelElement.attr("id", "label-" + id);
+
         labelElement.html(text);
 
         this.append(labelElement);
@@ -2073,10 +2274,16 @@ var ModalDialog = Class.$extend(
 
     appendDraggableList : function(elementId, label, items)
     {
-        var draggableList = $("<div/>",
+        var editEnabled = true;
+        var draggableList = $("#" + elementId);
+        if (draggableList.length === 0)
         {
-            id : elementId
-        });
+            editEnabled = false;
+            draggableList = $("<div/>",
+            {
+                id : elementId
+            });
+        }
 
         draggableList.css({
             "float" : "right",
@@ -2103,8 +2310,18 @@ var ModalDialog = Class.$extend(
             draggableList.append(button);
         }
 
-        this.appendLabel(label);
-        this.append(draggableList, true);
+        if (!editEnabled)
+        {
+            this.appendLabel(label, elementId);
+            this.append(draggableList, true);
+        }
+        else
+        {
+            var thisLabel = $("#label-" + elementId);
+            if (thisLabel.length !== 0)
+                thisLabel.html(label);
+        }
+        return draggableList;
     },
 
     appendDroppable : function(elementId, label, allowDuplicates)
@@ -2120,10 +2337,11 @@ var ModalDialog = Class.$extend(
             "border-color" : "black",
             "border-width" : "1px",
             "border-style" : "dashed",
+            "border-radius" : "10px",
             "margin" : "4px"
         });
 
-        this.appendLabel(label);
+        this.appendLabel(label, elementId);
 
         droppable.droppable({
             activeClass: "ui-state-default",
@@ -2165,7 +2383,7 @@ var ModalDialog = Class.$extend(
                 var divButtons = $("<div/>", {
                     id : "dropped-" + buttonTitle
                 });
-                divButtons.data("component", buttonTitle);
+                divButtons.data("dropData", buttonTitle);
                 divButtons.css({
                     "display" : "inline-block",
                     "margin" : "4px"
@@ -2178,6 +2396,8 @@ var ModalDialog = Class.$extend(
             }
         });
         this.append(droppable, true);
+
+        return droppable;
     },
 
     append : function(element, newLine)
@@ -2199,7 +2419,7 @@ var ModalDialog = Class.$extend(
         this.element.dialog({
             resizable : false,
             width : this.width,
-            height : this.height,
+            minHeight : this.height,
             modal : true,
             closeOnEscape : true,
             buttons : this.buttons
