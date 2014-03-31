@@ -6,8 +6,311 @@ define([
         "core/scene/IComponent",
         "core/scene/Attribute",
         "core/scene/AttributeChange",
+        "core/math/Transform",
         "lib/InterfaceDesigner-main"
-    ], function(Class, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, _Editor) {
+    ], function(Class, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
+
+var AddEntityCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, components, name, replicated)
+    {
+        if (isNull(name))
+            name = "";
+        if (isNull(replicated))
+            replicated = true;
+
+        var commandLabel = " + add entity";
+        if (name !== "")
+            commandLabel += " named " + name;
+
+        this.$super(commandLabel);
+        this.scenePtr = scenePtr;
+        this.components = components;
+        this.name = name;
+        this.replicated = replicated;
+        this.id = 0;
+    },
+
+    exec : function()
+    {
+        var entityPtr = this.scenePtr.createEntity(this.id, this.components, null, this.replicated);
+        this.id = entityPtr.id;
+
+        if (this.name !== "")
+            entityPtr.setName(this.name);
+    },
+
+    undo : function()
+    {
+        this.scenePtr.removeEntity(this.id);
+    }
+});
+
+var RemoveEntityCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, entityPtr)
+    {
+        var commandLabel = " - remove entity with ID " + entityPtr.id;
+        if (entityPtr.getName() !== "")
+            commandLabel += " named " + entityPtr.getName();
+
+        this.$super(commandLabel);
+        this.scenePtr = scenePtr;
+        this.id = entityPtr.id;
+        this.entityStr = "";
+    },
+
+    exec : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.id);
+        if (isNotNull)
+        {
+            this.entityStr = entityPtr.serialize();
+            this.scenePtr.removeEntity(this.id);
+        }
+    },
+
+    undo : function()
+    {
+        this.scenePtr.deserializeFrom(this.entityStr);
+    }
+});
+
+var AddComponentCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, entityId, compType, compName, isLocal, temporary)
+    {
+        if (isNull(compName))
+            compName = "";
+        if (isNull(isLocal))
+            isLocal = false;
+        if (isNull(temporary))
+            temporary = false;
+
+        var commandLabel = " + add component of type " + compType;
+        if (compName !== "")
+            commandLabel += " named " + compName;
+
+        this.$super(commandLabel);
+
+        this.scenePtr = scenePtr;
+        this.entityId = entityId;
+        this.compName = compName;
+        this.compType = compType;
+        this.isLocal = isLocal;
+        this.temporary = temporary;
+        this.compId = -1;
+    },
+
+    exec : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.createComponent(this.compType, this.compName, this.isLocal);
+        if (isNotNull(componentPtr))
+        {
+            this.compId = componentPtr.id;
+            componentPtr.setTemporary(this.temporary);
+        }
+    },
+
+    undo : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        entityPtr.removeComponent(this.compId);
+    }
+});
+
+var RemoveComponentCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, componentPtr)
+    {
+        var commandLabel = " - remove component of type " + componentPtr.typeName;
+        if (componentPtr.getName() !== "")
+            commandLabel += " named " + componentPtr.getName();
+
+        this.$super(commandLabel);
+        this.scenePtr = scenePtr;
+        this.entityId = componentPtr.parentId();
+        this.compStr = "";
+        this.compId = componentPtr.id;
+    },
+
+    exec : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId)
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.componentById(this.compId);
+        if (isNull(componentPtr))
+            return;
+
+        this.compStr = componentPtr.serialize();
+        entityPtr.removeComponent(this.compId);
+    },
+
+    undo : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId)
+        if (isNull(entityPtr))
+            return;
+
+        var component = JSON.parse(this.compStr);
+        var componentPtr = entityPtr.createComponent(component.type, component.name);
+        if (isNotNull(componentPtr))
+        {
+            this.compId = componentPtr.id;
+            componentPtr.deserialize(component);
+        }
+    }
+});
+
+var AddAttributeCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, componentPtr, attributeName, attributeTypeId)
+    {
+        this.$super(" + add attribute named " + attributeName + " of type " + attributeTypeId);
+        this.scenePtr = scenePtr;
+        this.entityId = componentPtr.parentId();
+        this.compName = componentPtr.name;
+        this.compType = componentPtr.typeName;
+        this.attributeName = attributeName;
+        this.attributeTypeId = attributeTypeId;
+        this.index = -1;
+    },
+
+    exec : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(componentPtr))
+            return;
+
+        componentPtr.createAttribute(this.attributeTypeId, this.attributeName);
+        var attributePtr = componentPtr.attributeByName(this.attributeName);
+        this.index = attributePtr.index;
+    },
+
+    undo : function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(componentPtr))
+            return;
+
+        componentPtr.removeAttribute(this.index);
+    }
+});
+
+var RemoveAttributeCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, attributePtr)
+    {
+        this.$super(" - remove attribute named " + attributePtr.name + " of type " + attributePtr.typeId);
+        this.entityId = attributePtr.owner.parentId();
+        this.compName = attributePtr.owner.name;
+        this.compType = attributePtr.owner.typeName;
+        this.attributeTypeId = attributePtr.typeId;
+        this.attributeName = attributePtr.name;
+        this.attributeIndex = attributePtr.index;
+        this.value = attributePtr.get();
+    },
+
+    exec : function()
+    {
+        var entityPtr = RocketEditor.scene.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(componentPtr))
+            return;
+
+        var attributePtr = componentPtr.getAttributeByIndex(this.attributeIndex);
+        if (isNull(attributePtr))
+            return;
+
+        this.value = attributePtr.get();
+        componentPtr.removeAttribute(attributePtr.index);
+
+    },
+
+    undo : function()
+    {
+        var entityPtr = RocketEditor.scene.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var componentPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(componentPtr))
+            return;
+
+        var success = componentPtr.createAttribute(this.attributeTypeId, this.attributeName);
+        if (success)
+        {
+            var attributePtr = componentPtr.attributeByName(this.attributeName);
+            attributePtr.set(this.value);
+        }
+    }
+});
+
+var AttributeChangeCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, attributePtr, value)
+    {
+        this.$super(" * " + attributePtr.name + " change");
+
+        this.scenePtr = scenePtr;
+        this.oldValue = attributePtr.get();
+        this.newValue = value;
+        this.name = attributePtr.name;
+        this.index = attributePtr.index;
+        this.typeId = attributePtr.typeId;
+
+        this.compName = attributePtr.owner.name;
+        this.compType = attributePtr.owner.typeName;
+        this.entityId = attributePtr.owner.parentId();
+    },
+
+    set : function(value)
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var compPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(compPtr))
+            return;
+
+        var attrPtr = compPtr.getAttributeByIndex(this.index);
+        if (isNull(attrPtr))
+            return;
+
+        attrPtr.set(value);
+    },
+
+    exec : function()
+    {
+        this.set(this.newValue);
+    },
+
+    undo : function()
+    {
+        this.set(this.oldValue);
+    },
+});
 
 var RocketKeyEvent = KeyEventWrapper.$extend(
 {
@@ -75,7 +378,7 @@ var RocketScene = SceneWrapper.$extend(
         return null;
     },
 
-    createEntity : function(components, change, replicated, componentsReplicated)
+    createEntity : function(id, components, change, replicated, componentsReplicated)
     {
         if (isNull(replicated))
             replicated = true;
@@ -84,13 +387,24 @@ var RocketScene = SceneWrapper.$extend(
         if (isNotNull(replicated) && isNull(change))
             change = replicated ? AttributeChange.Replicated : AttributeChange.LocalOnly;
 
-        var entity = TundraSDK.framework.scene.createEntity(0, components, change, replicated, componentsReplicated);
+        var entity = TundraSDK.framework.scene.createEntity(id, components, change, replicated, componentsReplicated);
         return new RocketEntity(entity);
     },
 
     removeEntity : function(entityId)
     {
         TundraSDK.framework.scene.removeEntity(entityId);
+    },
+
+    deserializeFrom : function(str)
+    {
+        var entity = JSON.parse(str);
+        var entityPtr = this.entityById(entity.id);
+        if (isNull(entityPtr))
+            entityPtr = this.createEntity(entity.id, [], null, !entity.local);
+
+        if (isNotNull(entityPtr))
+            entityPtr.deserialize(entity);
     },
 
     registeredComponents : function()
@@ -138,6 +452,11 @@ var RocketScene = SceneWrapper.$extend(
                 attrTypeId === Attribute.AssetReference ||
                 attrTypeId === Attribute.EntityReference ||
                 attrTypeId === Attribute.QVariant);
+    },
+
+    isAttributeBool : function(attrTypeId)
+    {
+        return (attrTypeId === Attribute.Bool);
     },
 
     /// AssetReferenceList and QVariantList technically are arrays
@@ -362,6 +681,34 @@ var RocketEntity = EntityWrapper.$extend(
         this._ptr.removeComponent(componentId);
     },
 
+    serialize : function()
+    {
+        var result = {};
+
+        result.id = this.id;
+        result.name = this.name;
+        result.local = this.local;
+        result.temporary = this.temporary;
+
+        result.components = [];
+        var comps = this.components();
+        for (var i = 0; i < comps.length; i++)
+            result.components.push(comps[i].serialize());
+
+        return JSON.stringify(result);
+    },
+
+    deserialize : function(entity)
+    {
+        for (var i = 0; i < entity.components.length; i++)
+        {
+            var component = JSON.parse(entity.components[i]);
+            var componentPtr = this.createComponent(component.type, component.name);
+            if (isNotNull(componentPtr))
+                componentPtr.deserialize(component);
+        }
+    },
+
     onComponentCreated : function(context, callback)
     {
         this.registerCallback("onComponentCreated", context, callback);
@@ -436,9 +783,9 @@ var RocketComponent = ComponentWrapper.$extend(
     createAttribute : function(typeId, name)
     {
         if (this.expired())
-            return false;
+            return null;
 
-        return (this.isDynamic() && this._ptr.createAttribute(typeId, name));
+        return (this.isDynamic() && this._ptr.createAttribute(typeId, name, null, true));
     },
 
     attributeByName : function(name)
@@ -467,6 +814,45 @@ var RocketComponent = ComponentWrapper.$extend(
             return false;
 
         return (this.isDynamic() && this._ptr.removeAttribute(index));
+    },
+
+    serialize : function()
+    {
+        var result = {};
+
+        result.id = this.id;
+        result.name = this.name;
+        result.type = this.typeName;
+        result.local = this.local;
+        result.temporary = this.temporary;
+        result.attributes = [];
+
+        var attrs = this.attributes();
+        for (var i = 0; i < attrs.length; i++)
+            result.attributes.push(attrs[i].serialize());
+
+        return JSON.stringify(result);
+    },
+
+    deserialize : function(component)
+    {
+        var attributes = component.attributes;
+        for (var i = 0; i < attributes.length; i++)
+        {
+            var attr = JSON.parse(attributes[i]);
+            var attrPtr = null;
+            if (this.isDynamic())
+            {
+                var success = this.createAttribute(attr.typeId, attr.name);
+                if (success)
+                    attrPtr = this.attributeByName(attr.name);
+            }
+            else
+                attrPtr = this.getAttributeByIndex(attr.index);
+
+            if (isNotNull(attrPtr))
+                attrPtr.deserialize(attr);
+        }
     },
 
     onAttributeAdded : function(context, callback)
@@ -554,6 +940,43 @@ var RocketAttribute = AttributeWrapper.$extend(
             return;
 
         this._ptr.set(value);
+    },
+
+    serialize : function()
+    {
+        var result = { 
+            name : this.name,
+            typeId : this.typeId,
+            index : this.index
+        };
+
+        var value = this.get();
+        if (this.typeId === Attribute.Transform)
+            result.value = {
+                pos : value.pos,
+                rot : value.rot,
+                scale : value.scale
+            };       
+        else
+            result.value = value;
+
+        return JSON.stringify(result);
+    },
+
+    deserialize : function(attribute)
+    {
+        if (attribute.typeId === Attribute.Transform)
+        {
+            var attrValue = attribute.value;
+            var pos = new THREE.Vector3(attrValue.pos.x, attrValue.pos.y, attrValue.pos.z);
+            var rot = new THREE.Vector3(attrValue.rot.x, attrValue.rot.y, attrValue.rot.z);
+            var scale = new THREE.Vector3(attrValue.scale.x, attrValue.scale.y, attrValue.scale.z);
+
+            var transform = new Transform(pos, rot, scale);
+            this.set(transform);
+        }
+        else
+            this.set(attribute.value)
     }
 });
 
@@ -578,6 +1001,11 @@ var RocketRaycastResult = RaycastResult.$extend(
 
 var RocketEditor = IEditor.$extend(
 {
+    __classvars__ : 
+    {
+        scene : null
+    },
+
     __init__ : function()
     {
         this.$super();
@@ -651,7 +1079,8 @@ var RocketEditor = IEditor.$extend(
 
     registerSceneObject : function()
     {
-        return new RocketScene();
+        RocketEditor.scene = new RocketScene();
+        return RocketEditor.scene;
     },
 
     onKeyEvent : function(keyEvent)
@@ -667,6 +1096,46 @@ var RocketEditor = IEditor.$extend(
     onResizeEvent : function(width, height)
     {
         this.callback("onResizeEvent", width, height);
+    },
+
+    addEntityCommand : function(components, entityName, replicated)
+    {
+        this.undoStack.pushAndExec(new AddEntityCommand(RocketEditor.scene, components, entityName, replicated));
+    },
+
+    removeEntityCommand : function(entityPtr)
+    {
+        this.undoStack.pushAndExec(new RemoveEntityCommand(RocketEditor.scene, entityPtr));
+    },
+
+    addComponentCommand : function(entityId, compType, compName, isLocal, temporary)
+    {
+        this.undoStack.pushAndExec(new AddComponentCommand(RocketEditor.scene, entityId, compType, compName, isLocal, temporary));
+    },
+
+    removeComponentCommand : function(componentPtr)
+    {
+        this.undoStack.pushAndExec(new RemoveComponentCommand(RocketEditor.scene, componentPtr));
+    },
+
+    addAttributeCommand : function(componentPtr, attrTypeId, attrName)
+    {
+        var existing = componentPtr.attributeByName(attrName);
+        if (isNotNull(existing))
+            return false;
+
+        this.undoStack.pushAndExec(new AddAttributeCommand(RocketEditor.scene, componentPtr, attrName, attrTypeId));
+        return true;
+    },
+
+    removeAttributeCommand : function(attributePtr)
+    {
+        this.undoStack.pushAndExec(new RemoveAttributeCommand(RocketEditor.scene, attributePtr));   
+    },
+
+    changeAttributeCommand : function(attributePtr, newValue)
+    {
+        this.undoStack.pushAndExec(new AttributeChangeCommand(RocketEditor.scene, attributePtr, newValue));
     }
 });
 

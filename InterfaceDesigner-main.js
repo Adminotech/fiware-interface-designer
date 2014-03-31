@@ -76,9 +76,10 @@ var SceneWrapper = IWrapper.$extend(
 
     // Main scene methods
     // pure virtual
+    deserializeFrom : function(jsonObject) {},
     entities : function() {},
     entityById : function(entityId) {},
-    createEntity : function(components, change, replicated, componentsReplicated) {},
+    createEntity : function(id, components, change, replicated, componentsReplicated) {},
     removeEntity : function(entityId) {},
     registeredComponents : function() {},
     doesAllowSameNamedComponents : function() {},
@@ -91,6 +92,11 @@ var SceneWrapper = IWrapper.$extend(
 
     // virtual
     isAttributeAtomic : function(attrTypeId)
+    {
+        return false;
+    },
+
+    isAttributeBool : function(attrTypeId)
     {
         return false;
     },
@@ -152,7 +158,14 @@ var EntityWrapper = IWrapper.$extend(
         return null;
     },
 
+    isAncestorOf : function(entityPtr)
+    {
+        return false;
+    },
+
     // pure virtual
+    serialize : function() {},
+    deserialize : function(jsonObject) {},
     setName : function(name) {},
     getName : function() {},
     numberOfComponents : function() {},
@@ -191,6 +204,8 @@ var ComponentWrapper = IWrapper.$extend(
     },
 
     // pure virtual
+    serialize : function() {},
+    deserialize : function(jsonObject) {},
     isDynamic : function() {},
     setTemporary : function(temporary) {},
     attributes : function() {},
@@ -337,6 +352,7 @@ var IEditor = IWrapper.$extend(
 
         // The current object in editing
         this.currentObject = null;
+        this.undoStack = new UndoRedoManager();
 
         this._initUi();
 
@@ -351,6 +367,8 @@ var IEditor = IWrapper.$extend(
         this.registerKeyEventCallback(this, this._onKeyEvent);
         this.registerMouseEventCallback(this, this._onMouseEvent);
         IEditor.scene = this.registerSceneObject();
+
+        this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
     },
 
     isEditorEnabled : function()
@@ -387,6 +405,14 @@ var IEditor = IWrapper.$extend(
     registerKeyEventCallback : function(context, callback) {},
     registerMouseEventCallback : function(context, callback) {},
     registerResizeEventCallback : function(context, callback) {},
+
+    addEntityCommand : function(components, entityName) {},
+    removeEntityCommand : function(entityPtr) {},
+    addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
+    removeComponentCommand : function(componentPtr) {},
+    addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
+    removeAttributeCommand : function(attributePtr) {},
+    changeAttributeCommand : function(attributePtr, value) {},
 
     _initUi : function()
     {
@@ -672,6 +698,10 @@ var IEditor = IWrapper.$extend(
             this.toggleEditor();
         else if (keyEvent.isPressed(metaTogglePanels) && keyEvent.isPressed(keyTogglePanels))
             this.togglePanels();
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("z"))
+            this.undoStack.undo();
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("q"))
+            this.undoStack.redo();
     },
 
     _onMouseEvent : function(mouseEvent)
@@ -751,6 +781,11 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
     },
 
+    onUndoRedoStateChanged : function(undoItems, redoItems)
+    {
+        // TODO
+    },
+
     componentHolderHeight : function()
     {
         return this.ui.ecEditor.panel.height() - (
@@ -794,10 +829,7 @@ var IEditor = IWrapper.$extend(
 
                 var entityName = $("#" + inputNewEntityId).val();
                 var isLocal = $("#" + checkboxIsLocalId).is(":checked");
-
-                var entityPtr = IEditor.scene.createEntity(componentNames, null, !isLocal);
-                if (entityName !== "")
-                    entityPtr.setName(entityName);
+                IEditor.Instance.addEntityCommand(componentNames, entityName, !isLocal);
 
                 $(this).dialog("close");
                 $(this).remove();
@@ -905,9 +937,7 @@ var IEditor = IWrapper.$extend(
                     return;
                 }
 
-                var newComponent = entityPtr.createComponent(compTypeName, compName, isLocal);
-                if (isNotNull(newComponent))
-                    newComponent.setTemporary(isTemporary);
+                IEditor.Instance.addComponentCommand(entityPtr.id, compTypeName, compName, isLocal, isTemporary);
 
                 $(this).dialog("close");
                 $(this).remove();
@@ -938,8 +968,10 @@ var IEditor = IWrapper.$extend(
     onEntityRemoved : function(entityPtr)
     {
         if (isNotNull(this.currentObject))
-            if (entityPtr.id === this.currentObject.id)
+        {
+            if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
                 this.selectEntity(null);
+        }
 
         this.removeTreeItem(entityPtr);
     },
@@ -1040,6 +1072,8 @@ var IEditor = IWrapper.$extend(
 
             this.selectEntity(null);
             this.ui.ecEditor.panel.hide();
+
+            this.undoStack.clear();
         }
     },
 
@@ -1156,18 +1190,13 @@ var IEditor = IWrapper.$extend(
                     {
                         if (componentId !== -1)
                         {
+                            var componentPtr = entity.componentById(componentId);
                             var confirmDialog = ModalDialog.confirmationDialog(
                                 "RemoveComponent", 
                                 "Remove " + compStr, 
                                 "Are you sure that you want to remove this " + compStr + "?",
                                 function(){
-                                    /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                                    if (!IEditor.scene.isRegistered("onComponentRemoved"))
-                                    {
-                                        var componentPtr = entity.componentById(componentId);
-                                        IEditor.Instance.onComponentRemoved(entityPtr, componentPtr);
-                                    }
-                                    entity.removeComponent(componentId);
+                                    IEditor.Instance.removeComponentCommand(componentPtr);
                                 });
 
                             confirmDialog.exec();
@@ -1179,11 +1208,7 @@ var IEditor = IWrapper.$extend(
                                 "Remove " + entStr + " with ID " + entityId, 
                                 "Are you sure that you want to remove this " + entStr + "?",
                                 function(){
-                                    /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                                    if (!IEditor.scene.isRegistered("onEntityRemoved"))
-                                        IEditor.Instance.onEntityRemoved(entity);
-
-                                    IEditor.scene.removeEntity(entityId);                                    
+                                    IEditor.Instance.removeEntityCommand(entity);                                    
                                 });
 
                             confirmDialog.exec();
@@ -1349,11 +1374,8 @@ var IEditor = IWrapper.$extend(
         if (!this.isEditorEnabled())
             return;
 
-        if (this.isECEditor)
-        {
-            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-                this.appendAccordionForComponent(componentPtr);
-        }
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            this.appendAccordionForComponent(componentPtr);
 
         var treeNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
         this.createTreeItemForComponent(componentPtr, treeNode);
@@ -1364,18 +1386,15 @@ var IEditor = IWrapper.$extend(
         if (!this.isEditorEnabled())
             return;
 
-        if (this.isECEditor)
-        {
-            if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-                if (componentPtr.typeName === "EC_Name")
-                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            if (componentPtr.typeName === "EC_Name")
+                this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
 
-            var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
-            $(accordionId).hide("fast", function()
-            {
-                $(accordionId).remove();
-            });
-        }
+        var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
+        $(accordionId).hide("fast", function()
+        {
+            $(accordionId).remove();
+        });
 
         if (componentPtr.typeName === "EC_Name")
             this.renameEntityNode(entityPtr, true);
@@ -1388,16 +1407,13 @@ var IEditor = IWrapper.$extend(
         if (!this.isEditorEnabled())
             return;
 
-        if (this.isECEditor)
+        if (isNotNull(this.currentObject))
         {
-            if (isNotNull(this.currentObject))
+            if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
             {
-                if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
-                {
-                    this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-                    if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-                        this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
-                }
+                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+                if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
             }
         }
 
@@ -1623,12 +1639,13 @@ var IEditor = IWrapper.$extend(
                     }
 
                     if (componentPtr.isDynamic())
-                        if (!componentPtr.createAttribute(attrTypeId, attrName))
+                    {
+                        if (!IEditor.Instance.addAttributeCommand(componentPtr, attrTypeId, attrName))
                         {
                             attrNameElem.addClass(Utils.invalidDataName);
                             return;
                         }
-
+                    }
                     $(this).dialog("close");
                     $(this).remove();
                 },
@@ -1657,6 +1674,7 @@ var IEditor = IWrapper.$extend(
                 var entityPtr = IEditor.scene.entityById(entityId);
                 if (isNotNull(entityPtr))
                 {
+                    var componentPtr = entityPtr.componentById(componentId);
                     var compStr = IEditor.scene.componentString;
                     var confirmDialog = ModalDialog.confirmationDialog(
                         "RemoveComponent", 
@@ -1664,13 +1682,7 @@ var IEditor = IWrapper.$extend(
                         "Are you sure that you want to remove this " + compStr + "?",
                         function()
                         {
-                            /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                            if (!IEditor.scene.isRegistered("onComponentRemoved"))
-                            {
-                                var componentPtr = entityPtr.componentById(componentId);
-                                IEditor.Instance.onComponentRemoved(entityPtr, componentPtr);
-                            }
-                            entityPtr.removeComponent(componentId);
+                            IEditor.Instance.removeComponentCommand(componentPtr);
                         }
                     );
 
@@ -1739,7 +1751,7 @@ var IEditor = IWrapper.$extend(
                 function(){
                     var compPtr = attributePtr.owner;
                     if (isNotNull(compPtr))
-                        compPtr.removeAttribute(attributePtr.index);
+                        IEditor.Instance.removeAttributeCommand(attributePtr);
                 }
             );
 
@@ -1953,6 +1965,7 @@ var IEditor = IWrapper.$extend(
     {
         var data = $(this).data("attrData");
         var value = $(this).val();
+        var finalValue = null;
 
         var name = data.name;
         var type = data.type;
@@ -1975,7 +1988,7 @@ var IEditor = IWrapper.$extend(
         if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
         {
             if (type === "boolean")
-                attribute.set($(this).is(":checked"));
+                finalValue = $(this).is(":checked");
             else if (type === "number")
             {
                 if (isNaN(value))
@@ -1986,11 +1999,11 @@ var IEditor = IWrapper.$extend(
                 else
                 {
                     $(this).removeClass(Utils.invalidDataName);
-                    attribute.set(parseFloat(value));
+                    finalValue = parseFloat(value);
                 }
             }
             else
-                attribute.set(value);
+                finalValue = value;
         }
         else if (IEditor.scene.isAttributeTransform(typeId))
         {
@@ -2006,24 +2019,26 @@ var IEditor = IWrapper.$extend(
             var axis = data.axis;
             var clone = attribute.get();
             clone[transformComp][axis] = parseFloat($(this).val());
-            attribute.set(clone);
+            finalValue = clone;
         }
         else if (IEditor.scene.isAttributeTuple(typeId))
         {
             var axis = data.axis;
             var clone = attribute.get();
             clone[axis] = parseFloat($(this).val());
-            attribute.set(clone);
+            finalValue = clone;
         }
         else if (IEditor.scene.isAttributeArray(typeId))
         {
             var index = data.index;
             var clone = attribute.get();
             clone[index] = $(this).val();
-            attribute.set(clone);
+            finalValue = clone;
         }
         else
             IEditor.scene.logError("[Editor]: Current type is not implemented yet! Type requested was: " + IEditor.scene.attributeTypeToName(typeId));
+
+        IEditor.Instance.changeAttributeCommand(attribute, finalValue);
     },
 
     onAttributeCreate : function(componentPtr, attributePtr)
@@ -2063,10 +2078,16 @@ var IEditor = IWrapper.$extend(
         if (isNull(elementName))
             return;
 
-        if (IEditor.scene.isAttributeAtomic(typeId))
+        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
         {
-            if (typeof(attributeValue) === "boolean")
-                $("#" + elementName).prop('checked', attributeValue);
+            if (IEditor.scene.isAttributeBool(typeId))
+            {
+                var value = attributeValue;
+                if (typeof(value) === "string")
+                    value = (value === "true" ? true : false);
+
+                $("#" + elementName).prop('checked', value);
+            }
 
             $("#" + elementName).val(attributeValue);
         }
@@ -2162,6 +2183,134 @@ var IEditor = IWrapper.$extend(
 
             arrayTableBody.data("arrayLength", arrayLength);
         }
+    }
+});
+
+var ICommand = Class.$extend(
+{
+    __init__ : function(commandString)
+    {
+        this.commandString = commandString;
+    },
+
+    exec : function() {},
+    undo : function() {}
+});
+
+var UndoRedoManager = Class.$extend(
+{
+    __init__ : function(numberOfItems)
+    {
+        this._numberOfItems = 50;
+        if (isNotNull(numberOfItems))
+            this._numberOfItems = numberOfItems;
+
+        this.stateChangedCallbacks = [];
+
+        this._undoHistory = [];
+        this._redoHistory = [];
+    },
+
+    canUndo : function()
+    {
+        return (this._undoHistory.length !== 0);
+    },
+
+    canRedo : function()
+    {
+        return (this._redoHistory.length !== 0);
+    },
+
+    undoHistory : function()
+    {
+        var result = [];
+        if (!this.canUndo())
+            return result;
+
+        for (var i = this._undoHistory.length - 1; i >= 0; i--)
+            result.push(this._undoHistory[i].commandString);
+
+        return result;
+    },
+
+    redoHistory : function()
+    {
+        var result = [];
+        if (!this.canRedo())
+            return result;
+
+        for (var i = this._redoHistory.length - 1; i >= 0; i--)
+            result.push(this._redoHistory[i].commandString);
+
+        return result;
+    },
+
+    stateChanged : function(context, callback)
+    {
+        this.stateChangedCallbacks.push({
+            "context" : context,
+            "callback" : callback
+        });
+    },
+
+    _onStateChanged : function()
+    {
+        for (var i = 0; i < this.stateChangedCallbacks.length; i++)
+        {
+            var context = this.stateChangedCallbacks[i].context;
+            var callback = this.stateChangedCallbacks[i].callback;
+
+            callback.call(context, this._undoHistory.length, this._redoHistory.length);
+        }
+    },
+
+    pushCommand : function(command)
+    {
+        this._redoHistory.length = 0;
+
+        if (this._undoHistory.length === this._numberOfItems)
+            this._undoHistory.shift();
+
+        this._undoHistory.push(command);
+        this._onStateChanged();
+    },
+
+    pushAndExec : function(command)
+    {
+        this.pushCommand(command);
+        command.exec();
+    },
+
+    undo : function()
+    {
+        if (!this.canUndo())
+            return;
+
+        var command = this._undoHistory.pop();
+        command.undo();
+        this._redoHistory.push(command);
+
+        this._onStateChanged();
+    },
+
+    redo : function()
+    {
+        if (!this.canRedo())
+            return;
+
+        var command = this._redoHistory.pop();
+        command.exec();
+        this._undoHistory.push(command);
+
+        this._onStateChanged();
+    },
+
+    clear : function()
+    {
+        this._undoHistory.length = 0;
+        this._redoHistory.length = 0;
+
+        this._onStateChanged();
     }
 });
 
