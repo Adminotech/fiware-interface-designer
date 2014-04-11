@@ -22,7 +22,7 @@ var CreateElementCommand = ICommand.$extend(
         if (isNull(name))
             name = "";
 
-        var commandLabel = " + add element of type " + elemType;
+        var commandLabel = "+add element of type " + elemType;
         if (name !== "")
             commandLabel += " named " + name;
 
@@ -91,7 +91,7 @@ var RemoveElementCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, elementPtr)
     {
-        var commandLabel = " - remove element of type " + elementPtr.typeName;
+        var commandLabel = "-remove element of type " + elementPtr.typeName;
         if (name !== "")
             commandLabel += " named " + elementPtr.getName();
 
@@ -116,11 +116,9 @@ var RemoveElementCommand = ICommand.$extend(
                 if (!IEditor.Instance.isRegistered("onComponentRemoved"))
                     IEditor.Instance.onComponentRemoved(parentElement, elementPtr);
             }
-            else
-            {
-                if (!IEditor.Instance.isRegistered("onEntityRemoved"))
-                    IEditor.Instance.onEntityRemoved(elementPtr);
-            }
+
+            if (!IEditor.Instance.isRegistered("onEntityRemoved"))
+                IEditor.Instance.onEntityRemoved(elementPtr);
 
             this.scenePtr.removeEntity(this.id);
         }
@@ -150,7 +148,7 @@ var ChangeAttributeCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, attributePtr, value)
     {
-        this.$super(" * " + attributePtr.name + " change");
+        this.$super("*edit " + attributePtr.name);
 
         this.scenePtr = scenePtr;
         this.oldValue = attributePtr.get();
@@ -182,6 +180,49 @@ var ChangeAttributeCommand = ICommand.$extend(
     undo : function()
     {
         this.set(this.oldValue);
+    }
+});
+
+var CreatePrimitiveCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, primitiveType, meshRef)
+    {
+        this.$super("+add " + primitiveType);
+        this.scenePtr = scenePtr;
+        this.type = primitiveType;
+        this.ref = meshRef;
+        this.id = 0;
+    },
+
+    exec : function()
+    {
+        var element = this.scenePtr.createElement(this.id, "group", [], this.type, null);
+        if (isNull(element))
+            return;
+
+        this.id = element.id;
+        var meshComp = element.createComponent("mesh", "", false, 0);
+        if (isNull(meshComp))
+            return;
+
+        var meshRefAttr = meshComp.attributeByName("src");
+        if (isNull(meshRefAttr))
+            return;
+
+        meshRefAttr.set(this.ref);
+
+        if (!IEditor.Instance.isRegistered("onEntityCreated"))
+            IEditor.Instance.onEntityCreated(element);
+    },
+
+    undo : function()
+    {
+        var element = this.scenePtr.entityById(this.id);
+        if (isNotNull(element))
+            if (!IEditor.Instance.isRegistered("onEntityRemoved"))
+                IEditor.Instance.onEntityRemoved(element);
+
+        this.scenePtr.removeEntity(this.id);
     }
 });
 
@@ -269,7 +310,7 @@ var XML3DScene = SceneWrapper.$extend(
 
     __init__ : function(canvasId)
     {
-        this.$super("xml3d");
+        this.$super();
         this.entityString = "element";
         this.componentString = "element";
 
@@ -1073,12 +1114,27 @@ var XML3DRaycastResult = RaycastResult.$extend(
 
 var XML3DEditor = IEditor.$extend(
 {
-    __init__ : function(mainContentDiv, canvasId)
+    __init__ : function(mainContentDiv, canvasId, resourcePath)
     {
         this.canvas = $("#" + canvasId);
         this.mainContent = $("#" + mainContentDiv);
 
-        this.$super();
+        if (isNull(resourcePath))
+            this.resourcePath = "resources/";
+        else
+            this.resourcePath = resourcePath;
+
+        if (this.resourcePath.charAt(this.resourcePath.length - 1) !== "/")
+            this.resourcePath += "/";
+
+        this.meshRefs = {
+            "Ball" : this.resourcePath + "ball.xml#ball",
+            "Cube" : this.resourcePath + "cube.xml#cube",
+            "Cone" : this.resourcePath + "cone.xml#cone",
+            "Cylinder" : this.resourcePath + "cylinder.xml#cylinder"
+        };
+
+        this.$super("xml3d");
 
         this.ui.sceneTree.addEntityButton.button("option", "label", "Add new element...");
         this.ui.ecEditor.addCompButton.button("option", "label", "Add new child element");
@@ -1127,16 +1183,8 @@ var XML3DEditor = IEditor.$extend(
                 var elementType = $("#" + comboElementTypeId).find(":selected").text();
                 IEditor.Instance.undoStack.pushAndExec(new CreateElementCommand(IEditor.scene, elementType, childrenElements, elementName));
 
-                // var elementPtr = IEditor.scene.createElement(elementType, childrenElements);
-                // if (elementName !== "")
-                //     elementPtr.setName(elementName);
-
                 $(this).dialog("close");
                 $(this).remove();
-
-                /// XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                // if (!IEditor.scene.isRegistered("onEntityCreated"))
-                //     IEditor.Instance.onEntityCreated(elementPtr);
             },
             "Cancel" : function()
             {
@@ -1214,10 +1262,6 @@ var XML3DEditor = IEditor.$extend(
 
                 $(this).dialog("close");
                 $(this).remove();
-
-                // XML3D workaround. TODO: remove when XML3D fixes DOM changes events propagition!
-                // if (!IEditor.scene.isRegistered("onComponentCreated") && isNotNull(newComponent))
-                //     IEditor.Instance.onComponentCreated(entityPtr, newComponent);
             },
             "Cancel" : function()
             {
@@ -1262,6 +1306,26 @@ var XML3DEditor = IEditor.$extend(
 
         if (isNotNull(node))
             node.remove();
+    },
+
+    createPrimitive : function(type)
+    {
+        this.undoStack.pushAndExec(new CreatePrimitiveCommand(IEditor.scene, type, this.meshRefs[type]));
+    },
+
+    createMovable : function()
+    {
+        this.undoStack.pushAndExec(new CreateElementCommand(IEditor.scene, "group", [], "movable", null));
+    },
+
+    createDrawable : function()
+    {
+        this.undoStack.pushAndExec(new CreateElementCommand(IEditor.scene, "group", ["mesh"], "drawable", null));
+    },
+
+    createScript : function()
+    {
+        this.undoStack.pushAndExec(new CreateElementCommand(IEditor.scene, "script", [], "script", null));
     },
 
     removeEntityCommand : function(elementPtr)

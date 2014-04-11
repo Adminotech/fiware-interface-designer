@@ -1,5 +1,7 @@
 define([
         "lib/classy",
+        "lib/three",
+        "lib/three-TransformControls",
         "core/framework/TundraSDK",
         "core/script/IApplication",
         "core/scene/Scene",
@@ -8,7 +10,7 @@ define([
         "core/scene/AttributeChange",
         "core/math/Transform",
         "lib/InterfaceDesigner-main"
-    ], function(Class, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
+    ], function(Class, THREE, __tc, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -19,7 +21,7 @@ var AddEntityCommand = ICommand.$extend(
         if (isNull(replicated))
             replicated = true;
 
-        var commandLabel = " + add entity";
+        var commandLabel = "+add entity";
         if (name !== "")
             commandLabel += " named " + name;
 
@@ -50,7 +52,7 @@ var RemoveEntityCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, entityPtr)
     {
-        var commandLabel = " - remove entity with ID " + entityPtr.id;
+        var commandLabel = "-remove entity with ID " + entityPtr.id;
         if (entityPtr.getName() !== "")
             commandLabel += " named " + entityPtr.getName();
 
@@ -87,7 +89,7 @@ var AddComponentCommand = ICommand.$extend(
         if (isNull(temporary))
             temporary = false;
 
-        var commandLabel = " + add component of type " + compType;
+        var commandLabel = "+add component of type " + compType;
         if (compName !== "")
             commandLabel += " named " + compName;
 
@@ -130,7 +132,7 @@ var RemoveComponentCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, componentPtr)
     {
-        var commandLabel = " - remove component of type " + componentPtr.typeName;
+        var commandLabel = "-remove component of type " + componentPtr.typeName;
         if (componentPtr.getName() !== "")
             commandLabel += " named " + componentPtr.getName();
 
@@ -175,7 +177,7 @@ var AddAttributeCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, componentPtr, attributeName, attributeTypeId)
     {
-        this.$super(" + add attribute named " + attributeName + " of type " + attributeTypeId);
+        this.$super("+add attribute named " + attributeName + " of type " + attributeTypeId);
         this.scenePtr = scenePtr;
         this.entityId = componentPtr.parentId();
         this.compName = componentPtr.name;
@@ -218,7 +220,8 @@ var RemoveAttributeCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, attributePtr)
     {
-        this.$super(" - remove attribute named " + attributePtr.name + " of type " + attributePtr.typeId);
+        this.$super("-remove attribute named " + attributePtr.name + " of type " + attributePtr.typeId);
+        this.scenePtr = scenePtr;
         this.entityId = attributePtr.owner.parentId();
         this.compName = attributePtr.owner.name;
         this.compType = attributePtr.owner.typeName;
@@ -230,7 +233,7 @@ var RemoveAttributeCommand = ICommand.$extend(
 
     exec : function()
     {
-        var entityPtr = RocketEditor.scene.entityById(this.entityId);
+        var entityPtr = this.scenePtr.entityById(this.entityId);
         if (isNull(entityPtr))
             return;
 
@@ -249,7 +252,7 @@ var RemoveAttributeCommand = ICommand.$extend(
 
     undo : function()
     {
-        var entityPtr = RocketEditor.scene.entityById(this.entityId);
+        var entityPtr = this.scenePtr.entityById(this.entityId);
         if (isNull(entityPtr))
             return;
 
@@ -270,7 +273,7 @@ var AttributeChangeCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, attributePtr, value)
     {
-        this.$super(" * " + attributePtr.name + " change");
+        this.$super("*edit " + attributePtr.name);
 
         this.scenePtr = scenePtr;
         this.oldValue = attributePtr.get();
@@ -310,6 +313,90 @@ var AttributeChangeCommand = ICommand.$extend(
     {
         this.set(this.oldValue);
     },
+});
+
+var CreatePrimitiveCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, primitiveType, meshRef)
+    {
+        this.$super("+add " + primitiveType);
+        this.scenePtr = scenePtr;
+        this.type = primitiveType;
+        this.ref = meshRef;
+        this.id = 0;
+    },
+
+    exec : function()
+    {
+        var entity = this.scenePtr.createEntity(this.id, ["EC_Name", "EC_Placeable", "EC_Mesh"]);
+        if (isNull(entity))
+            return;
+
+        this.id = entity.id;
+        entity.setName(this.type);
+
+        var meshComp = entity.getComponent("Mesh");
+        if (isNull(meshComp))
+            return;
+
+        var meshRefAttr = meshComp.attributeByName("meshRef");
+        if (isNull(meshRefAttr))
+            return;
+
+        meshRefAttr.set(this.ref);
+    },
+
+    undo : function()
+    {
+        this.scenePtr.removeEntity(this.id);
+    }
+});
+
+var TransformCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, placeable, mode, oldValue, newValue)
+    {
+        this.$super("*" + mode + " entity, ID:" + placeable.parentEntity.id);
+
+        this.scenePtr = scenePtr;
+        this.mode = mode;
+        this.entityId = placeable.parentEntity.id;
+        this.compName = placeable.name;
+        this.compType = "EC_Placeable";
+        this.oldValue = oldValue;
+        this.newValue = newValue;
+    },
+
+    set : function(value)
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var compPtr = entityPtr.getComponent(this.compType, this.compName);
+        if (isNull(compPtr))
+            return;
+
+        var transform = compPtr.attribute("transform").getClone();
+        if (this.mode === "translate")
+            transform.setPosition(value);
+        else if (this.mode === "rotate")
+            transform.setRotation(value);
+        else if (this.mode === "scale")
+            transform.setScale(value);
+
+        compPtr.attribute("transform").set(transform);
+    },
+
+    exec : function()
+    {
+        this.set(this.newValue);
+    },
+
+    undo : function()
+    {
+        this.set(this.oldValue);
+    }
 });
 
 var RocketKeyEvent = KeyEventWrapper.$extend(
@@ -355,7 +442,7 @@ var RocketScene = SceneWrapper.$extend(
 {
     __init__ : function()
     {
-        this.$super("rocket");
+        this.$super();
     },
 
     entities : function()
@@ -505,6 +592,11 @@ var RocketScene = SceneWrapper.$extend(
         return Attribute.typeIds();
     },
 
+    reset : function()
+    {
+        TundraSDK.framework.scene.reset();
+    },
+
     unsubscribe : function(subscription)
     {
         TundraSDK.framework.events.unsubscribe(subscription);
@@ -538,6 +630,12 @@ var RocketScene = SceneWrapper.$extend(
     {
         this.registerCallback("onAttributeChanged", context, callback);
         return TundraSDK.framework.scene.onAttributeChanged(this, this._onAttributeChanged);
+    },
+
+    sceneReset : function(context, callback)
+    {
+        this.registerCallback("onSceneReset", context, callback);
+        return TundraSDK.framework.scene.onReset(this, this._onSceneReset);
     },
 
     _onEntityCreated : function(entityPtr)
@@ -576,19 +674,24 @@ var RocketScene = SceneWrapper.$extend(
         this.callback("onAttributeChanged", entity, component, attributeIndex, attributeName, attributeValue);
     },
 
+    _onSceneReset : function()
+    {
+        this.callback("onSceneReset");
+    },
+
     logInfo : function(text)
     {
-        TundraSDK.framework.client.logInfo(text);
+        TundraSDK.framework.client.logInfo("[Editor]: " + text);
     },
 
     logWarning : function(text)
     {
-        TundraSDK.framework.client.logWarning(text);
+        TundraSDK.framework.client.logWarning("[Editor]: " + text);
     },
 
     logError : function(text)
     {
-        TundraSDK.framework.client.logError(text);
+        TundraSDK.framework.client.logError("[Editor]: " + text);
     }    
 });
 
@@ -1008,8 +1111,18 @@ var RocketEditor = IEditor.$extend(
 
     __init__ : function()
     {
-        this.$super();
-        this.transformEditor = new TransformEditor();
+        this.$super("rocket");
+
+        this.meshRefs = {
+            "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
+            "Cube" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Cube.mesh",
+            "Cone" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Cone.mesh",
+            "Cylinder" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Cylinder.mesh"
+        };
+
+        this.axisHelper = new THREE.AxisHelper(100);
+        this.gridHelper = new THREE.GridHelper(100,5);
+        this.gridHelper.setColors(new THREE.Color(0xFF0000), new THREE.Color(0x000000));
     },
 
     /* virtual */ 
@@ -1048,7 +1161,6 @@ var RocketEditor = IEditor.$extend(
     {
         TundraSDK.framework.ui.addWidgetToScene(element);
     },
-
 
     /* pure virtual */ 
     registerClientConnectedCallback : function(context, callback)
@@ -1098,6 +1210,51 @@ var RocketEditor = IEditor.$extend(
         this.callback("onResizeEvent", width, height);
     },
 
+    initTransformEditor : function()
+    {
+        this.transformEditor = new TransformEditor();
+    },
+
+    createPrimitive : function(type)
+    {
+        this.undoStack.pushAndExec(new CreatePrimitiveCommand(RocketEditor.scene, type, this.meshRefs[type]));
+    },
+
+    createMovable : function()
+    {
+        this.addEntityCommand(["EC_Placeable"], "movable", true);
+    },
+
+    createDrawable : function()
+    {
+        this.addEntityCommand(["EC_Placeable", "EC_Mesh"], "drawable", true);
+    },
+
+    createScript : function()
+    {
+        this.addEntityCommand(["EC_Script"], "script", true);
+    },
+
+    showGrid : function()
+    {
+        TundraSDK.framework.renderer.scene.add(this.gridHelper);
+    },
+
+    hideGrid : function()
+    {
+        TundraSDK.framework.renderer.scene.remove(this.gridHelper);
+    },
+
+    showAxes : function()
+    {
+        TundraSDK.framework.renderer.scene.add(this.axisHelper);
+    },
+
+    hideAxes : function()
+    {
+        TundraSDK.framework.renderer.scene.remove(this.axisHelper);
+    },
+
     addEntityCommand : function(components, entityName, replicated)
     {
         this.undoStack.pushAndExec(new AddEntityCommand(RocketEditor.scene, components, entityName, replicated));
@@ -1141,46 +1298,113 @@ var RocketEditor = IEditor.$extend(
 
 var TransformEditor = Class.$extend(
 {
-    __init__ : function()
+   __init__ : function()
     {
-        this.entity = null;
-        this.gizmo = null;
+        var camera = TundraSDK.framework.renderer.camera;
+        var domElement = TundraSDK.framework.renderer.renderer.domElement;
+
+        this.targetPlaceable = null;
+        this.cameraSubscription = null;
+
+        this.oldTransform = null;
+
+        this.transformControl = new THREE.TransformControls(camera, domElement);
+        this.transformControl.setSpace("local");
+        this.transformControl.addEventListener("change", this.onUpdate.bind(this));
+        this.transformControl.addEventListener("dragStop", this.onDragStopped.bind(this));
+
+        this.cameraSubscription = TundraSDK.framework.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
+        TundraSDK.framework.frame.onUpdate(this, this.onFrameUpdate);
     },
 
-    _createTransformGizmoEntity : function()
+    setTargetEntity : function(entity)
     {
-        if (isNotNull(this.entity) && isNotNull(this.gizmo))
+        this.oldTransform = null;
+
+        if (isNull(entity))
             return;
 
-        this.entity = TundraSDK.framework.scene.createLocalEntity(["TransformGizmo"]);
-        if (isNotNull(this.entity))
-            this.gizmo = this.entity.getComponent("TransformGizmo");
-    },
+        var entityPtr = entity._ptr;
 
-    setTargetEntity : function(entityPtr)
-    {
-        if (isNull(this.entity) || isNull(this.gizmo))
-            this._createTransformGizmoEntity();
-
-        if (entityPtr.id === this.entity.id)
-            return;
-
-        var placeable = entityPtr.getComponent("Placeable");
-        if (isNull(placeable))
+        this.targetPlaceable = entityPtr.getComponent("Placeable");
+        if (isNull(this.targetPlaceable))
         {
             this.clearSelection();
             return;
         }
 
-        this.gizmo.attachEntity(entityPtr);
+        this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
+        this.transformControl.attach(this.targetPlaceable.sceneNode);
+        TundraSDK.framework.renderer.scene.add(this.transformControl);
+    },
+
+    setMode : function(mode)
+    {
+        this.transformControl.setMode(mode);
+    },
+
+    onFrameUpdate : function(frametime)
+    {
+        if (this.transformControl.isAttached())
+            this.transformControl.update();
+    },
+
+    onActiveCameraChanged : function(activeCam, previousCam)
+    {
+        this.transformControl.setCamera(activeCam.camera);
+    },
+
+    onUpdate : function(event)
+    {
+        var transform = this.targetPlaceable.attribute("transform").getClone();
+        transform.setPosition(this.targetPlaceable.sceneNode.position.clone());
+        transform.setRotation(this.targetPlaceable.sceneNode.quaternion.clone());
+        transform.setScale(this.targetPlaceable.sceneNode.scale.clone());
+
+        this.targetPlaceable.attribute("transform").set(transform);
+    },
+
+    onDragStopped : function(event)
+    {
+        if (event.detail.object === this.targetPlaceable.sceneNode)
+        {
+            var value = null;
+            var newValue = null;
+            var transform = this.targetPlaceable.attribute("transform").getClone();
+
+            if (event.detail.mode === "translate")
+            {
+                value = this.oldTransform.pos.clone();
+                newValue = transform.pos;
+            }
+            else if (event.detail.mode === "rotate")
+            {
+                value = this.oldTransform.rot.clone();
+                newValue = transform.rot;
+            }
+            else if (event.detail.mode === "scale")
+            {
+                value = this.oldTransform.scale.clone();
+                newValue = transform.scale;
+            }
+
+            IEditor.Instance.undoStack.pushCommand(new TransformCommand(TundraSDK.framework.scene, this.targetPlaceable, event.detail.mode, value, newValue));
+
+            this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
+        }
     },
 
     clearSelection : function()
     {
-        if (isNull(this.entity) && isNull(this.gizmo))
-            return;
+        if (isNotNull(this.cameraSubscription))
+            TundraSDK.framework.events.unsubscribe(this.cameraSubscription);
 
-        this.gizmo.detachEntity();
+        this.transformControl.detach();
+        TundraSDK.framework.renderer.scene.remove(this.transformControl);
+
+        this.targetPlaceable = null;
+        this.cameraSubscription = null;
+        this.oldTransform = null;
     }
 });
 
@@ -1190,7 +1414,7 @@ var EditorApplication = IApplication.$extend(
     __init__ : function()
     {
         this.$super("Editor");
-        var editor = new RocketEditor();
+        var editor = new RocketEditor("rocket");
     }
 })
 

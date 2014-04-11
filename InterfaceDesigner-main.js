@@ -66,10 +66,9 @@ var IWrapper = Class.$extend(
 
 var SceneWrapper = IWrapper.$extend(
 {
-    __init__ : function(sceneType)
+    __init__ : function()
     {
         this.$super();
-        this.type = sceneType;
         this.entityString = "entity";
         this.componentString = "component";
     },
@@ -88,6 +87,7 @@ var SceneWrapper = IWrapper.$extend(
     componentNameInHumanFormat : function(typeName) {},
     attributeTypeToName : function(attrTypeId) {},
     attributeTypeIds : function() {},
+    reset : function() {},
     unsubscribe : function(subscription) {},
 
     // virtual
@@ -136,7 +136,7 @@ var SceneWrapper = IWrapper.$extend(
     // Log channels
     logInfo : function(text) {},
     logWarning : function(text) {},
-    logError : function(text){}
+    logError : function(text) {}
 });
 
 
@@ -326,10 +326,11 @@ var IEditor = IWrapper.$extend(
         Instance : null // 'Static' object of the editor. Use with caution
     },
 
-    __init__ : function()
+    __init__ : function(type)
     {
         this.$super();
         IEditor.Instance = this;
+        this.type = type;
 
         this.ui = {};                                       // JSON
         this.enabled = false;
@@ -352,9 +353,12 @@ var IEditor = IWrapper.$extend(
 
         // The current object in editing
         this.currentObject = null;
+
         this.undoStack = new UndoRedoManager();
+        this.toolkit = new ToolkitManager();
 
         this._initUi();
+        this.toolkit.initUi();
 
         if (this.isConnected())
             this._onClientConnected();
@@ -414,6 +418,32 @@ var IEditor = IWrapper.$extend(
     removeAttributeCommand : function(attributePtr) {},
     changeAttributeCommand : function(attributePtr, value) {},
 
+    initTransformEditor : function() {},
+    createPrimitive : function(type) {},
+    createMovable : function() {},
+    createDrawable : function() {},
+    createScript : function() {},
+
+    showGrid : function() {},
+    hideGrid : function() {},
+    showAxes : function() {},
+    hideAxes : function() {},
+
+    quickCreateEntity : function(type)
+    {
+        if (isNull(type))
+            return;
+
+        if (type === "Drawable")
+            this.createDrawable();
+        else if (type === "Movable")
+            this.createMovable();
+        else if (type === "Script")
+            this.createScript();
+        else
+            this.logError("quickCreate: Unknown type: " + text);
+    },
+
     _initUi : function()
     {
         // Invalid data CSS class, for marking up invalid values on input boxes
@@ -424,7 +454,7 @@ var IEditor = IWrapper.$extend(
         var menuItemsClass = $("<style/>");
         menuItemsClass.text(".sceneTree-contextMenu-itemsClass a { \
             font-family: Arial; \
-            font-size :  12pt; \
+            font-size :  12px; \
             background-color  : #F2F2F2; \
             color             : #333333; \
             text-decoration   : none; \
@@ -440,11 +470,24 @@ var IEditor = IWrapper.$extend(
         accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
         .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
 
+        var undoListStyle = "#_toolkit-undoStackButtons .ui-selecting { background: #AAAAAA; } \
+        #_toolkit-undoStackButtons .ui-selected { background: #BBBBBB; color: white; } \
+        #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
+        #_toolkit-undoStackButtons li { margin: 3px; padding: 0.4em; font-size: 1.4em; height: 18px; } ";
+
+        var undoStyleElem = $("<style/>");
+        undoStyleElem.append(undoListStyle);
+
         $("head").append(invalidDataClass);
         $("head").append(menuItemsClass);
         $("head").append(accordionStyle);
+        $("head").append(undoStyleElem);
+        $("body").css("font-size", "12px");
 
-        var panelHeight = this.height();
+        this.panelWidth = 420;
+        this.panelHeight = this.height();
+
+        var toolbar = this.toolkit.getOrCreateToolbar(this.width() - this.panelWidth);
 
         this.ui.sceneTree = {};
         this.ui.ecEditor = {};
@@ -455,8 +498,8 @@ var IEditor = IWrapper.$extend(
             "position"          : "absolute",
             "top"               : 0,
             "left"              : 0,
-            "height"            : panelHeight,
-            "width"             : "420px",
+            "height"            : this.panelHeight,
+            "width"             : this.panelWidth,
             "margin"            : 0,
             "padding"           : 0,
             "padding-top"       : 0,
@@ -476,8 +519,8 @@ var IEditor = IWrapper.$extend(
             "position"          : "absolute",
             "top"               : 0,
             "left"              : 0,
-            "height"            : panelHeight,
-            "width"             : "420px",
+            "height"            : this.panelHeight,
+            "width"             : this.panelWidth,
             "margin"            : 0,
             "padding"           : 0,
             "padding-bottom"    : 0,
@@ -672,8 +715,11 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.buttonsHolder.hide();
         this.ui.sceneTree.panel.hide();
         this.ui.ecEditor.panel.hide();
+        toolbar.hide();
+
         this.addWidget(this.ui.sceneTree.panel);
         this.addWidget(this.ui.ecEditor.panel);
+        this.addWidget(toolbar);
 
         this.registerResizeEventCallback(this, this._onResizeEvent);
 
@@ -781,9 +827,9 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
     },
 
-    onUndoRedoStateChanged : function(undoItems, redoItems)
+    onUndoRedoStateChanged : function(undoItems, redoItems, total)
     {
-        // TODO
+        this.toolkit.onUndoRedoStateChanged(undoItems, redoItems, total);
     },
 
     componentHolderHeight : function()
@@ -1056,6 +1102,7 @@ var IEditor = IWrapper.$extend(
         {
             this.switchPanels(false);
             this.populateScene();
+            this.toolkit.show();
             this._onResizeEvent();
         }
         else
@@ -1073,8 +1120,13 @@ var IEditor = IWrapper.$extend(
             this.selectEntity(null);
             this.ui.ecEditor.panel.hide();
 
+            this.toolkit.hide();
+
             this.undoStack.clear();
         }
+
+        if (isNull(this.transformEditor))
+            this.initTransformEditor();
     },
 
     togglePanels : function()
@@ -1095,8 +1147,10 @@ var IEditor = IWrapper.$extend(
             this.ui.ecEditor.panel.hide();
             this.ui.sceneTree.panel.show();
         }
+
         this.isECEditor = ecPanel;
         this._onResizeEvent();
+        this.toolkit.onPanelsSwitch(this.isECEditor);
     },
 
     selectEntity : function(entityPtr, activeComponent)
@@ -1137,6 +1191,20 @@ var IEditor = IWrapper.$extend(
             else
                 this.ui.ecEditor.upButton.hide();
         }
+
+        this.toolkit.onEntitySelected(entityPtr);
+    },
+
+    setTransformMode : function(mode)
+    {
+        if (this.transformEditor)
+            this.transformEditor.setMode(mode);
+    },
+
+    removeCurrent : function()
+    {
+        if (isNotNull(this.currentObject))
+            this.removeEntityCommand(this.currentObject);
     },
 
     createContextMenu : function()
@@ -1327,7 +1395,11 @@ var IEditor = IWrapper.$extend(
         if (isNull(setUnnamed))
             setUnnamed = false;
 
-        var entityName = "<i>unnamed</i>";
+        var type = entityPtr.typeName;
+        if (isNull(type))
+            type = "";
+
+        var entityName = "<i>unnamed " + type + "</i>";
         var name = entityPtr.getName();
         if (name !== "" && !setUnnamed)
             entityName = name;
@@ -1508,7 +1580,7 @@ var IEditor = IWrapper.$extend(
         });
 
         var editButton = null;
-        if (IEditor.scene.type === "xml3d")
+        if (IEditor.Instance.type === "xml3d")
         {
             var editButtonId = "editButton-" + componentPtr.id;
             editButton = $("<button/>", {
@@ -2190,6 +2262,7 @@ var ICommand = Class.$extend(
 {
     __init__ : function(commandString)
     {
+        this.commandId = -1;
         this.commandString = commandString;
     },
 
@@ -2202,6 +2275,8 @@ var UndoRedoManager = Class.$extend(
     __init__ : function(numberOfItems)
     {
         this._numberOfItems = 50;
+        this._index = -1;
+
         if (isNotNull(numberOfItems))
             this._numberOfItems = numberOfItems;
 
@@ -2228,7 +2303,10 @@ var UndoRedoManager = Class.$extend(
             return result;
 
         for (var i = this._undoHistory.length - 1; i >= 0; i--)
-            result.push(this._undoHistory[i].commandString);
+            result.push({
+                id : i,
+                commandString : this._undoHistory[i].commandString
+            });
 
         return result;
     },
@@ -2239,8 +2317,14 @@ var UndoRedoManager = Class.$extend(
         if (!this.canRedo())
             return result;
 
+        var total = this._undoHistory.length + this._redoHistory.length;
         for (var i = this._redoHistory.length - 1; i >= 0; i--)
-            result.push(this._redoHistory[i].commandString);
+        {
+            result.push({
+                id : (total - i - 1),
+                commandString : this._redoHistory[i].commandString
+            });
+        }
 
         return result;
     },
@@ -2255,12 +2339,17 @@ var UndoRedoManager = Class.$extend(
 
     _onStateChanged : function()
     {
+        this._index = this._undoHistory.length - 1;
+
+        var undoHistory = this.undoHistory();
+        var redoHistory = this.redoHistory();
+
         for (var i = 0; i < this.stateChangedCallbacks.length; i++)
         {
             var context = this.stateChangedCallbacks[i].context;
             var callback = this.stateChangedCallbacks[i].callback;
 
-            callback.call(context, this._undoHistory.length, this._redoHistory.length);
+            callback.call(context, undoHistory, redoHistory, undoHistory.length + redoHistory.length);
         }
     },
 
@@ -2281,26 +2370,56 @@ var UndoRedoManager = Class.$extend(
         command.exec();
     },
 
-    undo : function()
+    undo : function(disconnected)
     {
         if (!this.canUndo())
             return;
+
+        if (isNull(disconnected))
+            disconnected = false;
 
         var command = this._undoHistory.pop();
         command.undo();
         this._redoHistory.push(command);
 
-        this._onStateChanged();
+        if (!disconnected)
+            this._onStateChanged();
     },
 
-    redo : function()
+    redo : function(disconnected)
     {
         if (!this.canRedo())
             return;
 
+        if (isNull(disconnected))
+            disconnected = false;
+
         var command = this._redoHistory.pop();
         command.exec();
         this._undoHistory.push(command);
+
+        if (!disconnected)
+            this._onStateChanged();
+    },
+
+    goToState : function(commandId)
+    {
+        if (commandId < 0)
+            return;
+
+        var undoOrRedo = (this._index - commandId) >= 0;
+        var times = Math.abs(this._index - commandId);
+
+        if (undoOrRedo)
+            ++times;
+
+        for (var i = 0; i < times; i++)
+        {
+            if (undoOrRedo)
+                this.undo(true);
+            else
+                this.redo(true);
+        }
 
         this._onStateChanged();
     },
@@ -2313,6 +2432,736 @@ var UndoRedoManager = Class.$extend(
         this._onStateChanged();
     }
 });
+
+var ToolkitManager = Class.$extend(
+{
+    __init__ : function()
+    {
+        this.toolbar = null;
+        this.undoMenu = null;
+        this.redoMenu = null;
+        this.ui = {};
+    },
+
+    initUi : function()
+    {
+        this.ui.undoButton = $("<button/>", {
+            id : "_toolkit-undoButton",
+            title : "Undo"
+        });
+        this.ui.undoButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.undoButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-arrowreturnthick-1-w"
+            }
+        })
+
+        this.ui.undoArrowButton = $("<button/>");
+        this.ui.undoArrowButton.css({
+            "width" : "14px",
+            "height" : "22px"
+        });
+        this.ui.undoArrowButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-triangle-1-s"
+            }
+        });
+
+        this.ui.undoButtonSet = $("<div/>", {
+            id : "_toolkit-undoButtonSet"
+        });
+
+        this.ui.undoButtonSet.css({
+            "display" : "inline-block",
+            "margin" : "4px"
+        });
+
+        this.ui.undoButtonSet.append(this.ui.undoButton);
+        this.ui.undoButtonSet.append(this.ui.undoArrowButton);
+        this.ui.undoButtonSet.buttonset();
+        this.ui.undoButtonSet.buttonset("option", "disabled", true);
+
+        this.ui.redoButton = $("<button/>", {
+            id : "_toolkit-redoButton",
+            title : "Redo"
+        });
+        this.ui.redoButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.redoButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-arrowreturnthick-1-e"
+            }
+        })
+
+        this.ui.redoArrowButton = $("<button/>");
+        this.ui.redoArrowButton.css({
+            "width" : "14px",
+            "height" : "22px"
+        });
+        this.ui.redoArrowButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-triangle-1-s"
+            }
+        });
+
+        this.ui.redoButtonSet = $("<div/>", {
+            id : "_toolkit-redoButtonSet"
+        });
+        this.ui.redoButtonSet.css({
+            "display" : "inline-block",
+            "margin" : "4px"
+        });
+
+        this.ui.redoButtonSet.append(this.ui.redoButton);
+        this.ui.redoButtonSet.append(this.ui.redoArrowButton);
+        this.ui.redoButtonSet.buttonset();
+        this.ui.redoButtonSet.buttonset("option", "disabled", true);
+
+        this.ui.undoMenu = $("<ul/>",{
+            id : "_toolkit-undoMenu"
+        });
+        this.ui.undoMenu.css({
+            "font-size" : "10px",
+            "width" : "150px",
+            "padding" : "5px",
+            "z-index" : 5
+        });
+
+        $("body").append(this.ui.undoMenu);
+
+        this.ui.redoMenu = $("<ul/>", {
+            id : "_toolkit-redoMenu"
+        });
+        this.ui.redoMenu.css({
+            "font-size" : "10px",
+            "width" : "150px",
+            "padding" : "5px",
+            "z-index" : 5
+        });
+
+        $("body").append(this.ui.redoMenu);
+
+        this.ui.quickAddButton = $("<button/>");
+        this.ui.quickAddButton.text("Add...");
+        this.ui.quickAddButton.css({
+            "font-size" : "10px",
+            "width" : "80px",
+            "height" : "22px"
+        });
+        this.ui.quickAddButton.button({
+            icons : {
+                primary : "ui-icon-circle-plus",
+                secondary : "ui-icon-triangle-1-s"
+            }
+        });
+
+        this.ui.quickAddMenu = $("<ul/>", {
+            id : "_toolkit-quickAddMenu"
+        });
+        this.ui.quickAddMenu.css({
+            "font-size" : "10px",
+            "width" : "150px",
+            "padding" : "5px",
+            "z-index" : 5
+        });
+
+        $("body").append(this.ui.quickAddMenu);
+
+        this.ui.createButton = $("<button/>");
+        this.ui.createButton.text("Create");
+        this.ui.createButton.css({
+            "font-size" : "10px",
+            "width" : "80px",
+            "height" : "22px"
+        });
+        this.ui.createButton.button({
+            icons : {
+                primary : "ui-icon-circle-plus",
+                secondary : "ui-icon-triangle-1-s"
+            }
+        });
+
+        this.ui.createMenu = $("<ul/>", {
+            id : "_toolkit-createMenu"
+        });
+        this.ui.createMenu.css({
+            "font-size" : "10px",
+            "width" : "150px",
+            "padding" : "5px",
+            "z-index" : 5
+        });
+
+        $("body").append(this.ui.createMenu);
+
+        this.ui.deleteButton = $("<button/>");
+        this.ui.deleteButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.deleteButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-trash"
+            }
+        });
+        this.ui.deleteButton.button("option", "disabled", true);
+
+        if (IEditor.Instance.type === "rocket")
+        {
+            this.ui.gridButton = $("<input/>", {
+                type : "checkbox",
+                id : "_toolkit-gridButton",
+                title : "Toggle grid"
+            });
+
+            var gridLabel = $("<label/>", {
+                "for" : "_toolkit-gridButton"
+            });
+            gridLabel.append("<i class='ui-icon ui-icon-calculator'></i>");
+
+            this.ui.axesButton = $("<input/>", {
+                type : "checkbox",
+                id : "_toolkit-axesButton",
+                title : "Toggle axes"
+            });
+
+            var axesLabel = $("<label/>", {
+                "for" : "_toolkit-axesButton"
+            });
+            axesLabel.append("<i class='ui-icon ui-icon-arrow-4'></i>");
+
+            this.ui.axesGridButtonSet = $("<div/>", {
+                id : "_toolkit-axesGridButtonSet"
+            });
+            this.ui.axesGridButtonSet.css({
+                "height" : "22px",
+                "font-size" : "10px",
+                "display" : "inline-block",
+            });
+
+            this.ui.axesGridButtonSet.append(gridLabel);
+            this.ui.axesGridButtonSet.append(this.ui.gridButton);
+            this.ui.axesGridButtonSet.append(axesLabel);
+            this.ui.axesGridButtonSet.append(this.ui.axesButton);
+
+            this.ui.axesGridButtonSet.buttonset();
+
+            this.ui.translateButton = $("<input/>", {
+                type : "radio",
+                id : "_toolkit-radioTranslate",
+                name : "transform",
+                checked : "checked"
+            });
+            this.ui.translateButton.data("transformMode", "translate");
+
+            this.ui.rotateButton = $("<input/>", {
+                type : "radio",
+                id : "_toolkit-radioRotate",
+                name : "transform"
+            });
+            this.ui.rotateButton.data("transformMode", "rotate");
+
+            this.ui.scaleButton = $("<input/>", {
+                type : "radio",
+                id : "_toolkit-radioScale",
+                name : "transform"
+            });
+            this.ui.scaleButton.data("transformMode", "scale");
+
+            this.ui.transformButtonSet = $("<div/>", {
+                id : "_toolkit-transformButtonSet"
+            });
+            this.ui.transformButtonSet.css({
+                "height" : "22px",
+                "font-size" : "10px",
+                "float" : "right"
+            });
+
+            var labelTranslate = $("<label/>", {
+                "for" : "_toolkit-radioTranslate"
+            });
+            labelTranslate.text("Translate");
+
+            var labelRotate = $("<label/>", {
+                "for" : "_toolkit-radioRotate"
+            });
+            labelRotate.text("Rotate");
+
+            var labelScale = $("<label/>", {
+                "for" : "_toolkit-radioScale"
+            });
+            labelScale.text("Scale");
+
+            this.ui.transformButtonSet.append(this.ui.translateButton);
+            this.ui.transformButtonSet.append(labelTranslate);
+            this.ui.transformButtonSet.append(this.ui.rotateButton);
+            this.ui.transformButtonSet.append(labelRotate);
+            this.ui.transformButtonSet.append(this.ui.scaleButton);
+            this.ui.transformButtonSet.append(labelScale);
+            this.ui.transformButtonSet.buttonset();
+            this.ui.transformButtonSet.buttonset("option", "disabled", true);
+        }
+
+        this.ui.sceneTreeButton = $("<input/>",{
+            type : "radio",
+            id : "_toolkit-sceneTreeButton",
+            name : "panels",
+            checked : "checked"
+        });
+        this.ui.sceneTreeButton.data("isECEditor", false);
+
+        this.ui.ecEditorButton = $("<input/>", {
+            type : "radio",
+            id : "_toolkit-ecEditorButton",
+            name : "panels",
+        });
+        this.ui.ecEditorButton.data("isECEditor", true);
+
+        this.ui.panelsButtonSet = $("<div/>", {
+            id : "_toolkit-panelsButtonSet"
+        });
+        this.ui.panelsButtonSet.css({
+            "height" : "22px",
+            "font-size" : "10px",
+            "float" : "right"
+        });
+
+        var labelSceneTree = $("<label/>", {
+            "for" : "_toolkit-sceneTreeButton"
+        });
+        labelSceneTree.text("Scene tree");
+
+        var labelECEditor = $("<label/>", {
+            "for" : "_toolkit-ecEditorButton"
+        });
+        labelECEditor.text("EC editor");
+
+        this.ui.panelsButtonSet.append(this.ui.sceneTreeButton);
+        this.ui.panelsButtonSet.append(labelSceneTree);
+        this.ui.panelsButtonSet.append(this.ui.ecEditorButton);
+        this.ui.panelsButtonSet.append(labelECEditor);
+        this.ui.panelsButtonSet.buttonset();
+
+        if (isNotNull(this.toolbar))
+        {
+            this.toolbar.append(this.ui.undoButtonSet);
+            this.toolbar.append(this.ui.redoButtonSet);
+            this.toolbar.append($("<span style='margin:0 .2em'></span>"));
+            this.toolbar.append(this.ui.createButton);
+            this.toolbar.append(this.ui.quickAddButton);
+            this.toolbar.append(this.ui.deleteButton);
+            this.toolbar.append($("<span style='margin:0 .2em'></span>"));
+            if (IEditor.Instance.type === "rocket")
+                this.toolbar.append(this.ui.axesGridButtonSet);
+
+            this.toolbar.append(this.ui.panelsButtonSet);
+            this.toolbar.append($("<span style='margin:0 .2em'></span>"));
+            if (IEditor.Instance.type === "rocket")
+                this.toolbar.append(this.ui.transformButtonSet);
+        }
+
+        this.constructMenus();
+        IEditor.Instance.registerResizeEventCallback(this, this.onResizeEvent);
+
+        var self = this;
+
+        this.ui.undoButton.click(function(){
+            IEditor.Instance.undoStack.undo();
+        });
+
+        this.ui.redoButton.click(function(){
+            IEditor.Instance.undoStack.redo();
+        });
+
+        this.ui.undoArrowButton.click(function(){
+            var menu = $("#_toolkit-undoMenu");
+            menu.show();
+            menu.position({
+                my : "left top",
+                at : "left bottom",
+                of : this
+            });
+
+            $(document).one("click", function(){
+                menu.hide();
+            });
+
+            return false;
+        });
+
+        this.ui.redoArrowButton.click(function(){
+            var menu = $("#_toolkit-redoMenu");
+            menu.show();
+            menu.position({
+                my : "left top",
+                at : "left bottom",
+                of : this
+            });
+
+            $(document).one("click", function(){
+                menu.hide();
+            });
+
+            return false;
+        });
+
+        this.ui.createButton.click(function(){
+            self.ui.createMenu.show();
+            self.ui.createMenu.position({
+                my : "left top",
+                at : "left bottom",
+                of : this
+            });
+
+            $(document).one("click", function(){
+                self.ui.createMenu.hide();
+            });
+
+            return false;
+        });
+
+        this.ui.quickAddButton.click(function(){
+            self.ui.quickAddMenu.show();
+            self.ui.quickAddMenu.position({
+                my : "left top",
+                at : "left bottom",
+                of : this
+            });
+
+            $(document).one("click", function(){
+                self.ui.quickAddMenu.hide();
+            });
+
+            return false;
+        });
+
+        this.ui.deleteButton.click(function(){
+            var dialog = ModalDialog.confirmationDialog("RemoveItem", 
+                "Remove edited object",
+                "Are you sure you want to remove the selected object?", 
+                function(){
+                    IEditor.Instance.removeCurrent();
+                });
+            dialog.exec();
+        });
+
+        this.ui.undoMenu.on("menuselect", function(event, ui) {
+            var commandId = ui.item.data("commandId");
+            if (commandId < 0)
+                self.onViewUndoStackClicked();
+            else
+                IEditor.Instance.undoStack.goToState(commandId);
+
+            $(this).hide();
+        });
+
+        this.ui.redoMenu.on("menuselect", function(event, ui){
+            var commandId = ui.item.data("commandId");
+            if (commandId < 0)
+                self.onViewUndoStackClicked();
+            else
+                IEditor.Instance.undoStack.goToState(commandId);
+
+            $(this).hide();
+        });
+
+        this.ui.createMenu.on("menuselect", function(event, ui){
+            IEditor.Instance.createPrimitive(ui.item.text());
+        });
+
+        this.ui.quickAddMenu.on("menuselect", function(event, ui){
+            IEditor.Instance.quickCreateEntity(ui.item.text());
+        });
+
+        if (IEditor.Instance.type === "rocket")
+        {
+            this.ui.gridButton.click(function()
+            {
+                if ($(this).is(":checked"))
+                    IEditor.Instance.showGrid();
+                else
+                    IEditor.Instance.hideGrid();
+            });
+
+            this.ui.axesButton.click(function()
+            {
+                if ($(this).is(":checked"))
+                    IEditor.Instance.showAxes();
+                else
+                    IEditor.Instance.hideAxes();
+            })
+
+            this.ui.transformButtonSet.on("change", function(event){
+                IEditor.Instance.setTransformMode($(event.target).data("transformMode"));
+            });
+        }
+
+        this.ui.panelsButtonSet.on("change", function(event){
+            IEditor.Instance.switchPanels($(event.target).data("isECEditor"));
+        });
+    },
+
+    onViewUndoStackClicked : function()
+    {
+        var dialog = $("<div/>", {
+            id : "_toolkit-undoStackView",
+            title : "Editing history"
+        });
+
+        var stackButtonSet = $("<ul/>",{
+            id : "_toolkit-undoStackButtons"
+        });
+        stackButtonSet.css({
+            "margin-left" : "auto",
+            "margin-right" : "auto",
+            "font-size" : "8px",
+            "minWidth" : "150px"
+        })
+
+        var undoHistory = IEditor.Instance.undoStack.undoHistory();
+        var redoHistory = IEditor.Instance.undoStack.redoHistory();
+
+        for(var i = redoHistory.length - 1; i >= 0; i--)
+        {
+            var li = $("<li/>");
+            li.append(redoHistory[i].commandString.substring(1));
+            li.data("commandId", redoHistory[i].id);
+            li.appendTo(stackButtonSet);
+        }
+
+        var liCurrent = $("<li/>");
+        liCurrent.append("<strong>Current state</strong>");
+        liCurrent.appendTo(stackButtonSet);
+
+        for (var i = 0; i < undoHistory.length; i++)
+        {
+            var li = $("<li/>");
+            li.append(undoHistory[i].commandString.substring(1));
+            li.data("commandId", undoHistory[i].id);
+            li.appendTo(stackButtonSet);
+        }
+
+        stackButtonSet.selectable({
+            tolerance : "fit"
+        });
+
+        dialog.append(stackButtonSet);
+        dialog.dialog({
+            resizable : false,
+            width : 300,
+            minHeight : 180,
+            maxHeight : 600,
+            modal : true,
+            closeOnEscape : true,
+            buttons : {
+                "Ok" : function()
+                {
+                    var selected = $(".ui-selected");
+                    if (selected.length > 0)
+                    {
+                        var commandId = $(selected[0]).data("commandId");
+                        if (isNotNull(commandId))
+                            IEditor.Instance.undoStack.goToState(commandId);
+                    }
+
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            }
+        });
+
+        dialog.dialog("open");
+    },
+
+    getOrCreateToolbar : function(width)
+    {
+        if (isNotNull(this.toolbar))
+            return this.toolbar;
+
+        this.toolbar = $("<div/>");
+        this.toolbar.attr("id", "interfaceDesigner-toolbar");
+        this.toolbar.css({
+            "position" : "absolute",
+            "top" : 0,
+            "padding"  : 0,
+            "margin"   : 0,
+            "height"   : 30,
+            "width" : width,
+            "border"   : 0,
+            "border-bottom"     : "1px solid gray",
+            "background-color"  : "rgba(248,248,248, 0.5)"
+        });
+
+        return this.toolbar;
+    },
+
+    constructMenus : function()
+    {
+        var createMenu = this.ui.createMenu;
+        var quickAddMenu = this.ui.quickAddMenu;
+
+        var primitives = [{
+            text : "Cube",
+            icon : "ui-icon-bullet"
+        },
+        {
+            text : "Ball",
+            icon : "ui-icon-bullet"
+        },
+        {
+            text : "Cone",
+            icon : "ui-icon-bullet"
+        },
+        {
+            text : "Cylinder",
+            icon : "ui-icon-bullet"
+        }];
+
+        var quickAddItems = [{
+            text : "Movable", 
+            icon: "ui-icon-arrow-4"
+        },
+        {
+            text : "Drawable",
+            icon : "ui-icon-pencil"
+        },
+        {
+            text : "Script",
+            icon : "ui-icon-document"
+        }];
+
+        for (var i = 0; i < primitives.length; i++)
+        {
+            var li = $("<li/>");
+            var a = $("<a href='#'></a>");
+            var span = $("<span class='ui-icon " + primitives[i].icon + "'></span>");
+            a.append(span);
+            a.append(primitives[i].text);
+            li.append(a);
+            createMenu.append(li);
+        }
+
+        for (var i = 0; i < quickAddItems.length; i++)
+        {
+            var li = $("<li/>");
+            var a = $("<a href='#'></a>");
+            var span = $("<span class='ui-icon " + quickAddItems[i].icon + "'></span>");
+            a.append(span);
+            a.append(quickAddItems[i].text);
+            li.append(a);
+            quickAddMenu.append(li);
+        }
+
+        createMenu.menu();
+        createMenu.hide();
+
+        quickAddMenu.menu();
+        quickAddMenu.hide();
+    },
+
+    constructUndoRedoMenu : function(menu, items, total)
+    {
+        if (menu.hasClass("ui-menu"))
+            menu.menu("destroy");
+
+        menu.empty();
+
+        for(var i = 0; i < items.length; i++)
+        {
+            if (i === 5)
+                break;
+
+            var item = $("<li/>");
+
+            var spanClass = "ui-icon";
+            var commandChar = items[i].commandString[0];
+            if (commandChar === "+")
+                spanClass += " ui-icon-plus";
+            else if (commandChar === "-")
+                spanClass += " ui-icon-minus";
+            else if (commandChar === "*")
+                spanClass += " ui-icon-pencil";
+
+            var link = $("<a href='#'></a>");
+            var span = $("<span class='" + spanClass + "'></span>");
+            link.append(span);
+            link.append(items[i].commandString.substring(1));
+
+            item.append(link);
+            item.data("commandId", items[i].id);
+
+            menu.append(item);
+        }
+
+        if (items.length > 5)
+        {
+            var item = $("<li/>");
+            item.data("commandId", -1);
+            var a = $("<a href='#'>View all " + total + " items</a>");
+            item.append(a);
+
+            menu.append($("<li>-</li>"));
+            menu.append(item);
+        }
+
+        menu.menu();
+        menu.hide();
+    },
+
+    onResizeEvent : function(width, height)
+    {
+        if (isNull(this.toolbar))
+            return;
+
+        this.toolbar.css("width", width - IEditor.Instance.panelWidth);
+    },
+    onUndoRedoStateChanged : function(undoItems, redoItems, total)
+    {
+        this.ui.undoButtonSet.buttonset("option", "disabled", undoItems.length === 0);
+        this.ui.redoButtonSet.buttonset("option", "disabled", redoItems.length === 0);
+
+        this.constructUndoRedoMenu(this.ui.undoMenu, undoItems, total);
+        this.constructUndoRedoMenu(this.ui.redoMenu, redoItems, total);
+    },
+
+    onEntitySelected : function(entityPtr)
+    {
+        this.ui.deleteButton.button("option", "disabled", isNull(entityPtr));
+        if (isNotNull(this.ui.transformButtonSet))
+            this.ui.transformButtonSet.buttonset("option", "disabled", isNull(entityPtr));
+    },
+
+    onPanelsSwitch : function(isECEditor)
+    {
+        this.ui.sceneTreeButton.prop("checked", !isECEditor);
+        this.ui.ecEditorButton.prop("checked", isECEditor);
+        this.ui.panelsButtonSet.buttonset("refresh");
+    },
+
+    show : function()
+    {
+        this.toolbar.show();
+    },
+
+    hide : function()
+    {
+        this.toolbar.hide();
+    }
+})
 
 var ModalDialog = Class.$extend(
 {
