@@ -496,7 +496,7 @@ var RocketScene = SceneWrapper.$extend(
 
     registeredComponents : function()
     {
-        return Scene.registeredComponents;
+        return Scene.registeredComponentsList();
     },
 
     doesAllowSameNamedComponents : function()
