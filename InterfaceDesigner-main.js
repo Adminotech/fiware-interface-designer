@@ -1371,6 +1371,9 @@ var IEditor = IWrapper.$extend(
 
     createTreeItemForComponent : function(componentPtr, parentNode)
     {
+        if (isNull(parentNode))
+            return;
+
         var fullName = this.getNodeTitleForComponent(componentPtr);
         var childNode = parentNode.addChildren({
             title : fullName,
@@ -2783,6 +2786,7 @@ var ToolkitManager = Class.$extend(
         });
 
         this.ui.undoArrowButton.click(function(){
+            $(".ui-menu").hide();
             var menu = $("#_toolkit-undoMenu");
             menu.show();
             menu.position({
@@ -2791,14 +2795,11 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                menu.hide();
-            });
-
             return false;
         });
 
         this.ui.redoArrowButton.click(function(){
+            $(".ui-menu").hide();
             var menu = $("#_toolkit-redoMenu");
             menu.show();
             menu.position({
@@ -2807,14 +2808,11 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                menu.hide();
-            });
-
             return false;
         });
 
         this.ui.createButton.click(function(){
+            $(".ui-menu").hide();
             self.ui.createMenu.show();
             self.ui.createMenu.position({
                 my : "left top",
@@ -2822,23 +2820,16 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                self.ui.createMenu.hide();
-            });
-
             return false;
         });
 
         this.ui.quickAddButton.click(function(){
+            $(".ui-menu").hide();
             self.ui.quickAddMenu.show();
             self.ui.quickAddMenu.position({
                 my : "left top",
                 at : "left bottom",
                 of : this
-            });
-
-            $(document).one("click", function(){
-                self.ui.quickAddMenu.hide();
             });
 
             return false;
@@ -2908,6 +2899,10 @@ var ToolkitManager = Class.$extend(
         this.ui.panelsButtonSet.on("change", function(event){
             IEditor.Instance.switchPanels($(event.target).data("isECEditor"));
         });
+
+        $("body:not(.ui-menu)").click(function() {
+            $(".ui-menu").hide();
+        })
     },
 
     onViewUndoStackClicked : function()
