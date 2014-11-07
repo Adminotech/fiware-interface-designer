@@ -1303,6 +1303,7 @@ var TransformEditor = Class.$extend(
         var camera = TundraSDK.framework.renderer.camera;
         var domElement = TundraSDK.framework.renderer.renderer.domElement;
 
+        this.wireframeHelper = null;
         this.targetPlaceable = null;
         this.cameraSubscription = null;
 
@@ -1311,6 +1312,7 @@ var TransformEditor = Class.$extend(
         this.transformControl = new THREE.TransformControls(camera, domElement);
         this.transformControl.setSpace("local");
         this.transformControl.addEventListener("change", this.onUpdate.bind(this));
+        this.transformControl.addEventListener("dragStart", this.onDragStarted.bind(this));
         this.transformControl.addEventListener("dragStop", this.onDragStopped.bind(this));
 
         this.cameraSubscription = TundraSDK.framework.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
@@ -1319,7 +1321,7 @@ var TransformEditor = Class.$extend(
 
     setTargetEntity : function(entity)
     {
-        this.oldTransform = null;
+        this.clearSelection();
 
         if (isNull(entity))
             return;
@@ -1336,6 +1338,19 @@ var TransformEditor = Class.$extend(
         this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
         this.transformControl.attach(this.targetPlaceable.sceneNode);
         TundraSDK.framework.renderer.scene.add(this.transformControl);
+
+        var mesh = entityPtr.mesh;
+        if (isNotNull(mesh))
+        {
+            if (isNull(this.wireframeHelper))
+            {
+                var meshClone = mesh.meshAsset.mesh.children[0].clone();
+                this.wireframeHelper = new THREE.WireframeHelper(meshClone, 0x00ffff);
+                this.wireframeHelper.material.linewidth = 2;
+                this.wireframeHelper.visible = false;
+                TundraSDK.framework.renderer.scene.add(this.wireframeHelper);
+            }
+        }
     },
 
     setMode : function(mode)
@@ -1364,10 +1379,45 @@ var TransformEditor = Class.$extend(
         this.targetPlaceable.attribute("transform").set(transform);
     },
 
+    onDragStarted : function(event)
+    {
+        if (event.detail.object === this.targetPlaceable.sceneNode)
+        {
+            this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
+
+            if (isNotNull(this.wireframeHelper))
+            {
+                var mesh = this.targetPlaceable.parentEntity.mesh;
+                if (isNull(mesh))
+                    return;
+
+                var nodeTransformation = mesh.attribute("nodeTransformation").getClone();
+                var wireTransform = this.oldTransform.clone();
+                wireTransform.pos.add(nodeTransformation.pos);
+                wireTransform.scale.multiply(nodeTransformation.scale);
+
+                var oldOrientation = wireTransform.orientation();
+                oldOrientation.multiply(nodeTransformation.orientation());
+                wireTransform.setRotation(oldOrientation);
+
+                this.wireframeHelper.position = wireTransform.pos;
+                this.wireframeHelper.scale = wireTransform.scale;
+                this.wireframeHelper.quaternion = wireTransform.orientation();
+                this.wireframeHelper.updateMatrix();
+                this.wireframeHelper.updateMatrixWorld();
+
+                this.wireframeHelper.visible = true;
+            }
+        }
+    },
+
     onDragStopped : function(event)
     {
         if (event.detail.object === this.targetPlaceable.sceneNode)
         {
+            if (isNotNull(this.wireframeHelper))
+                this.wireframeHelper.visible = false;
+
             var value = null;
             var newValue = null;
             var transform = this.targetPlaceable.attribute("transform").getClone();
@@ -1387,10 +1437,13 @@ var TransformEditor = Class.$extend(
                 value = this.oldTransform.scale.clone();
                 newValue = transform.scale;
             }
+            else
+            {
+                RocketEditor.scene.logError("Unknown transform mode:", event.detail.mode);
+                return;
+            }
 
             IEditor.Instance.undoStack.pushCommand(new TransformCommand(TundraSDK.framework.scene, this.targetPlaceable, event.detail.mode, value, newValue));
-
-            this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
         }
     },
 
@@ -1401,6 +1454,12 @@ var TransformEditor = Class.$extend(
 
         this.transformControl.detach();
         TundraSDK.framework.renderer.scene.remove(this.transformControl);
+
+        if (isNotNull(this.wireframeHelper))
+        {
+            TundraSDK.framework.renderer.scene.remove(this.wireframeHelper);
+            this.wireframeHelper = null;
+        }
 
         this.targetPlaceable = null;
         this.cameraSubscription = null;
