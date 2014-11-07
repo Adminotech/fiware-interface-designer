@@ -1,7 +1,6 @@
 define([
         "lib/classy",
         "lib/three",
-        "lib/three-TransformControls",
         "core/framework/TundraSDK",
         "core/script/IApplication",
         "core/scene/Scene",
@@ -9,8 +8,10 @@ define([
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
-        "lib/InterfaceDesigner-main"
-    ], function(Class, THREE, __tc, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
+        "application/fiware-interface-designer/lib/three-TransformControls",
+        "application/fiware-interface-designer/lib/jquery.fancytree-all.min",
+        "application/fiware-interface-designer/InterfaceDesigner-main"
+    ], function(Class, THREE, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _tc,  _jqueryFancyTree, _Editor) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -1112,6 +1113,8 @@ var RocketEditor = IEditor.$extend(
     __init__ : function()
     {
         this.$super("rocket");
+
+        $("head").append('<link rel="stylesheet" href="../src/application/fiware-interface-designer/lib/skin-win8/ui.fancytree.css">');
 
         this.meshRefs = {
             "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
