@@ -3415,7 +3415,11 @@ var ModalDialog = Class.$extend(
             minHeight : this.height,
             modal : true,
             closeOnEscape : true,
-            buttons : this.buttons
+            buttons : this.buttons,
+            close : function()
+            {
+                $(this).remove();
+            }
         });
 
         this.element.dialog("open");
