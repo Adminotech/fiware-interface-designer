@@ -895,7 +895,7 @@ var IEditor = IWrapper.$extend(
         var registeredComponents = IEditor.scene.registeredComponents();
 
         for (var i = 0; i < registeredComponents.length; i++)
-            componentNames.push(registeredComponents[i].typeName);
+            componentNames.push(registeredComponents[i].TypeName);
 
         dialog.appendDraggableList("draggableList-components", "Registered components", componentNames);
         dialog.appendDroppable("droppable-components", "Drag the components you want to be included upon creation of this entity", IEditor.scene.doesAllowSameNamedComponents());
@@ -953,8 +953,8 @@ var IEditor = IWrapper.$extend(
         var registeredComponents = IEditor.scene.registeredComponents();
         for (var i = 0; i < registeredComponents.length; i++)
             comps.push({
-                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].typeName),
-                value : registeredComponents[i].typeId
+                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
+                value : registeredComponents[i].TypeId
             });
 
         var dialog = new ModalDialog("AddComponent", "Add new component", 450, 300);
