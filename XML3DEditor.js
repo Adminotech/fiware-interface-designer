@@ -1330,7 +1330,7 @@ var XML3DEditor = IEditor.$extend(
 
     initTransformEditor : function()
     {
-        this.transformEditor = new TransformEditor();
+        // this.transformEditor = new TransformEditor();
     },
 
     removeEntityCommand : function(elementPtr)
