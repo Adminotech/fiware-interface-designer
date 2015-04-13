@@ -1328,6 +1328,11 @@ var XML3DEditor = IEditor.$extend(
         this.undoStack.pushAndExec(new CreateElementCommand(IEditor.scene, "script", [], "script", null));
     },
 
+    initTransformEditor : function()
+    {
+        this.transformEditor = new TransformEditor();
+    },
+
     removeEntityCommand : function(elementPtr)
     {
         this.undoStack.pushAndExec(new RemoveElementCommand(IEditor.scene, elementPtr));
@@ -1352,13 +1357,13 @@ var XML3DEditor = IEditor.$extend(
     registerMouseEventCallback : function(context, callback)
     {
         this.registerCallback("onMouseEvent", context, callback);
-        this.canvas.mousedown(this.onMouseEvent.bind(this));
+        this.canvas[0].addEventListener("mousedown", this.onMouseEvent.bind(this), false);
     },
 
     registerResizeEventCallback : function(context, callback)
     {
         this.registerCallback("onResizeEvent", context, callback);
-        $(window).resize(this.onResizeEvent.bind(this));
+        window.addEventListener("resize", this.onResizeEvent.bind(this), false);
     },
 
     registerSceneObject : function()
@@ -1376,8 +1381,67 @@ var XML3DEditor = IEditor.$extend(
         this.callback("onMouseEvent", new XML3DMouseEvent(mouseEvent));
     },
 
-    onResizeEvent : function(jqResizeEvent)
+    onResizeEvent : function(resizeEvent)
     {
-        this.callback("onResizeEvent", this.mainContent.width(), this.mainContent.height());
+        this.callback("onResizeEvent", this.container().width(), this.container().height());
+    }
+});
+
+var TransformEditor = Class.$extend(
+{
+    __init__ : function()
+    {
+        this.gizmo = null;
+        this.targetTransform = null;
+        this.mode = "translate";
+    },
+
+    setMode : function(mode)
+    {
+        this.clearSelection();
+        this.createGizmo(mode);
+    },
+
+    createGizmo : function(mode)
+    {
+        if (mode == undefined)
+            mode = this.mode;
+
+        switch(mode)
+        {
+            case "translate":
+                this.gizmo = new XML3D.tools.interaction.widgets.TranslateGizmo("interfaceDesignerGizmo", { target: this.targetTransform });
+                this.gizmo.attach();
+                break;
+            case "rotate":
+                this.gizmo = new XML3D.tools.interaction.widgets.RotateGizmo("interfaceDesignerGizmo", { 
+                    target: this.targetTransform,
+                    geometry: {
+                        scale: new XML3DVec3(2,2,2),
+                        bandWidth: 1.1
+                    }});
+                this.gizmo.attach();
+                break;
+        }
+    },
+
+    setTargetEntity : function(entity)
+    {
+        this.clearSelection();
+        if (isNull(entity))
+            return;
+
+        var targetGroup = $("#" + entity.name)[0];
+        this.targetTransform = XML3D.tools.MotionFactory.createTransformable(targetGroup);
+        this.createGizmo();
+    },
+
+    clearSelection : function()
+    {
+        if (this.gizmo != null)
+        {
+            this.gizmo.detach();
+            this.gizmo = null;
+        }
     }
 });

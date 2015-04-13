@@ -354,11 +354,12 @@ var IEditor = IWrapper.$extend(
         // The current object in editing
         this.currentObject = null;
 
+        this.initTransformEditor();
         this.undoStack = new UndoRedoManager();
         this.toolkit = new ToolkitManager();
 
         this._initUi();
-        this.toolkit.initUi();
+        this.toolkit.initUi(isNotNull(this.transformEditor));
 
         if (this.isConnected())
             this._onClientConnected();
@@ -2446,7 +2447,7 @@ var ToolkitManager = Class.$extend(
         this.ui = {};
     },
 
-    initUi : function()
+    initUi : function(gizmoAvailable)
     {
         this.ui.undoButton = $("<button/>", {
             id : "_toolkit-undoButton",
@@ -2657,7 +2658,10 @@ var ToolkitManager = Class.$extend(
             this.ui.axesGridButtonSet.append(this.ui.axesButton);
 
             this.ui.axesGridButtonSet.buttonset();
+        }
 
+        if (gizmoAvailable)
+        {
             this.ui.translateButton = $("<input/>", {
                 type : "radio",
                 id : "_toolkit-radioTranslate",
@@ -2768,7 +2772,7 @@ var ToolkitManager = Class.$extend(
 
             this.toolbar.append(this.ui.panelsButtonSet);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
-            if (IEditor.Instance.type === "rocket")
+            if (isNotNull(this.ui.transformButtonSet))
                 this.toolbar.append(this.ui.transformButtonSet);
         }
 
@@ -2889,8 +2893,11 @@ var ToolkitManager = Class.$extend(
                     IEditor.Instance.showAxes();
                 else
                     IEditor.Instance.hideAxes();
-            })
+            });
+        }
 
+        if (isNotNull(this.ui.transformButtonSet))
+        {
             this.ui.transformButtonSet.on("change", function(event){
                 IEditor.Instance.setTransformMode($(event.target).data("transformMode"));
             });
