@@ -1,17 +1,15 @@
 define([
         "lib/classy",
         "lib/three",
-        "core/framework/TundraSDK",
+        "core/framework/Tundra",
         "core/script/IApplication",
         "core/scene/Scene",
         "core/scene/IComponent",
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
-        "application/fiware-interface-designer/lib/three-TransformControls",
-        "application/fiware-interface-designer/lib/jquery.fancytree-all.min",
-        "application/fiware-interface-designer/InterfaceDesigner-main"
-    ], function(Class, THREE, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _tc,  _jqueryFancyTree, _Editor) {
+        "meshmoon-applications/src/editor/InterfaceDesigner-main"
+    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -412,6 +410,7 @@ var RocketKeyEvent = KeyEventWrapper.$extend(
         this.key = keyEvent.key;
         this.repeat = keyEvent.repeat;
         this.pressed = keyEvent.pressed;
+        this.originalEvent = keyEvent.originalEvent.originalEvent;
     }
 });
 
@@ -449,7 +448,7 @@ var RocketScene = SceneWrapper.$extend(
     entities : function()
     {
         var result = [];
-        var entities = TundraSDK.framework.scene.entities;
+        var entities = Tundra.scene.entities;
         for (var i = 0; i < entities.length; i++)
             if (isNotNull(entities[i]))
                 result.push(new RocketEntity(entities[i]));
@@ -459,7 +458,7 @@ var RocketScene = SceneWrapper.$extend(
 
     entityById : function(entityId)
     {
-        var entityPtr = TundraSDK.framework.scene.entityById(entityId);
+        var entityPtr = Tundra.scene.entityById(entityId);
         if (entityPtr !== null && entityPtr !== undefined)
             return new RocketEntity(entityPtr);
 
@@ -474,14 +473,21 @@ var RocketScene = SceneWrapper.$extend(
             componentsReplicated = replicated;
         if (isNotNull(replicated) && isNull(change))
             change = replicated ? AttributeChange.Replicated : AttributeChange.LocalOnly;
+        if (isNull(id) || id == 0)
+        {
+            if (replicated)
+                id = Tundra.scene.nextFreeId();
+            else
+                id = Tundra.scene.nextFreeIdLocal();
+        }
 
-        var entity = TundraSDK.framework.scene.createEntity(id, components, change, replicated, componentsReplicated);
+        var entity = Tundra.scene.createEntity(id, components, change, replicated, componentsReplicated);
         return new RocketEntity(entity);
     },
 
     removeEntity : function(entityId)
     {
-        TundraSDK.framework.scene.removeEntity(entityId);
+        Tundra.scene.removeEntity(entityId);
     },
 
     deserializeFrom : function(str)
@@ -526,7 +532,7 @@ var RocketScene = SceneWrapper.$extend(
 
     doRaycast : function(x, y, selectionLayer)
     {
-        var result = TundraSDK.framework.renderer.raycast(x, y, selectionLayer);
+        var result = Tundra.renderer.raycast(x, y, selectionLayer);
         return new RocketRaycastResult(result);
     },
 
@@ -595,48 +601,48 @@ var RocketScene = SceneWrapper.$extend(
 
     reset : function()
     {
-        TundraSDK.framework.scene.reset();
+        Tundra.scene.reset();
     },
 
     unsubscribe : function(subscription)
     {
-        TundraSDK.framework.events.unsubscribe(subscription);
+        Tundra.events.unsubscribe(subscription);
     },
 
     entityCreated : function(context, callback)
     {
         this.registerCallback("onEntityCreated", context, callback);
-        return TundraSDK.framework.scene.onEntityCreated(this, this._onEntityCreated);
+        return Tundra.scene.onEntityCreated(this, this._onEntityCreated);
     },
 
     entityRemoved : function(context, callback)
     {
         this.registerCallback("onEntityRemoved", context, callback);
-        return TundraSDK.framework.scene.onEntityRemoved(this, this._onEntityRemoved);
+        return Tundra.scene.onEntityRemoved(this, this._onEntityRemoved);
     },
 
     componentCreated : function(context, callback)
     {
         this.registerCallback("onComponentCreated", context, callback);
-        return TundraSDK.framework.scene.onComponentCreated(this, this._onComponentCreated);
+        return Tundra.scene.onComponentCreated(this, this._onComponentCreated);
     },
 
     componentRemoved : function(context, callback)
     {
         this.registerCallback("onComponentRemoved", context, callback);
-        return TundraSDK.framework.scene.onComponentRemoved(this, this._onComponentRemoved);
+        return Tundra.scene.onComponentRemoved(this, this._onComponentRemoved);
     },
 
     attributeChanged : function(context, callback)
     {
         this.registerCallback("onAttributeChanged", context, callback);
-        return TundraSDK.framework.scene.onAttributeChanged(this, this._onAttributeChanged);
+        return Tundra.scene.onAttributeChanged(this, this._onAttributeChanged);
     },
 
     sceneReset : function(context, callback)
     {
         this.registerCallback("onSceneReset", context, callback);
-        return TundraSDK.framework.scene.onReset(this, this._onSceneReset);
+        return Tundra.scene.onReset(this, this._onSceneReset);
     },
 
     _onEntityCreated : function(entityPtr)
@@ -682,17 +688,17 @@ var RocketScene = SceneWrapper.$extend(
 
     logInfo : function(text)
     {
-        TundraSDK.framework.client.logInfo("[Editor]: " + text);
+        Tundra.client.logInfo("[Editor]: " + text);
     },
 
     logWarning : function(text)
     {
-        TundraSDK.framework.client.logWarning("[Editor]: " + text);
+        Tundra.client.logWarning("[Editor]: " + text);
     },
 
     logError : function(text)
     {
-        TundraSDK.framework.client.logError("[Editor]: " + text);
+        Tundra.client.logError("[Editor]: " + text);
     }    
 });
 
@@ -1114,7 +1120,7 @@ var RocketEditor = IEditor.$extend(
     {
         this.$super("rocket");
 
-        $("head").append('<link rel="stylesheet" href="../src/application/fiware-interface-designer/lib/skin-win8/ui.fancytree.css">');
+        $("head").append('<link rel="stylesheet" href="../src/meshmoon-applications/src/editor/lib/skin-win8/ui.fancytree.css">');
 
         this.meshRefs = {
             "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
@@ -1131,65 +1137,65 @@ var RocketEditor = IEditor.$extend(
     /* virtual */ 
     isConnected : function()
     {
-        return TundraSDK.framework.client.isConnected();
+        return Tundra.client.isConnected();
     },
 
     /* virtual */
     width : function()
     {
-        return TundraSDK.framework.client.container.width();
+        return Tundra.client.container.width();
     },
 
     /* virtual */
     height : function()
     {
-        var containerHeight = TundraSDK.framework.client.container.height();
-        var taskbarHeight = TundraSDK.framework.ui.taskbar.height();
+        var containerHeight = Tundra.client.container.height();
+        var taskbarHeight = Tundra.ui.taskbar.height();
 
         return containerHeight - taskbarHeight;
     },
 
     taskbar : function()
     {
-        return TundraSDK.framework.client.ui.taskbar;
+        return Tundra.client.ui.taskbar;
     },
 
     container : function()
     {
-        return TundraSDK.framework.client.container;
+        return Tundra.client.container;
     },
 
     /* pure virtual */
     addWidget : function(element)
     {
-        TundraSDK.framework.ui.addWidgetToScene(element);
+        Tundra.ui.addWidgetToScene(element);
     },
 
     /* pure virtual */ 
     registerClientConnectedCallback : function(context, callback)
     {
-        TundraSDK.framework.client.onConnected(context, callback);
+        Tundra.client.onConnected(context, callback);
     },
 
     /* pure virtual */ 
     registerKeyEventCallback : function(context, callback)
     {
         this.registerCallback("onKeyEvent", context, callback);
-        TundraSDK.framework.input.onKeyEvent(this, this.onKeyEvent);
+        Tundra.input.onKeyEvent(this, this.onKeyEvent);
     },
 
     /* pure virtual */ 
     registerMouseEventCallback : function(context, callback)
     {
         this.registerCallback("onMouseEvent", context, callback);
-        TundraSDK.framework.input.onMouseEvent(this, this.onMouseEvent);
+        Tundra.input.onMouseEvent(this, this.onMouseEvent);
     },
 
     /* pure virtual */
     registerResizeEventCallback : function(context, callback)
     {
         this.registerCallback("onResizeEvent", context, callback);
-        TundraSDK.framework.ui.onWindowResize(this, this.onResizeEvent);
+        Tundra.ui.onWindowResize(this, this.onResizeEvent);
     },
 
     registerSceneObject : function()
@@ -1240,22 +1246,22 @@ var RocketEditor = IEditor.$extend(
 
     showGrid : function()
     {
-        TundraSDK.framework.renderer.scene.add(this.gridHelper);
+        Tundra.renderer.scene.add(this.gridHelper);
     },
 
     hideGrid : function()
     {
-        TundraSDK.framework.renderer.scene.remove(this.gridHelper);
+        Tundra.renderer.scene.remove(this.gridHelper);
     },
 
     showAxes : function()
     {
-        TundraSDK.framework.renderer.scene.add(this.axisHelper);
+        Tundra.renderer.scene.add(this.axisHelper);
     },
 
     hideAxes : function()
     {
-        TundraSDK.framework.renderer.scene.remove(this.axisHelper);
+        Tundra.renderer.scene.remove(this.axisHelper);
     },
 
     addEntityCommand : function(components, entityName, replicated)
@@ -1296,15 +1302,23 @@ var RocketEditor = IEditor.$extend(
     changeAttributeCommand : function(attributePtr, newValue)
     {
         this.undoStack.pushAndExec(new AttributeChangeCommand(RocketEditor.scene, attributePtr, newValue));
-    }
+    },
+
+    save : function(filename)
+    {
+        var sceneTxml = Tundra.scene.serializeToXml();
+        var sceneTxmlString = new XMLSerializer().serializeToString(sceneTxml);
+        var blob = new Blob([vkbeautify.xml(sceneTxmlString)], {type: "text/xml;charset=utf-8"});
+        saveAs(blob, filename + ".txml");
+    },
 });
 
 var TransformEditor = Class.$extend(
 {
    __init__ : function()
     {
-        var camera = TundraSDK.framework.renderer.camera;
-        var domElement = TundraSDK.framework.renderer.renderer.domElement;
+        var camera = Tundra.renderer.camera;
+        var domElement = Tundra.renderer.renderer.domElement;
 
         this.wireframeHelper = null;
         this.targetPlaceable = null;
@@ -1318,8 +1332,8 @@ var TransformEditor = Class.$extend(
         this.transformControl.addEventListener("dragStart", this.onDragStarted.bind(this));
         this.transformControl.addEventListener("dragStop", this.onDragStopped.bind(this));
 
-        this.cameraSubscription = TundraSDK.framework.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
-        TundraSDK.framework.frame.onUpdate(this, this.onFrameUpdate);
+        this.cameraSubscription = Tundra.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
+        Tundra.frame.onUpdate(this, this.onFrameUpdate);
     },
 
     setTargetEntity : function(entity)
@@ -1340,7 +1354,7 @@ var TransformEditor = Class.$extend(
 
         this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
         this.transformControl.attach(this.targetPlaceable.sceneNode);
-        TundraSDK.framework.renderer.scene.add(this.transformControl);
+        Tundra.renderer.scene.add(this.transformControl);
 
         var mesh = entityPtr.mesh;
         if (isNotNull(mesh))
@@ -1351,7 +1365,7 @@ var TransformEditor = Class.$extend(
                 this.wireframeHelper = new THREE.WireframeHelper(meshClone, 0x00ffff);
                 this.wireframeHelper.material.linewidth = 2;
                 this.wireframeHelper.visible = false;
-                TundraSDK.framework.renderer.scene.add(this.wireframeHelper);
+                Tundra.renderer.scene.add(this.wireframeHelper);
             }
         }
     },
@@ -1403,12 +1417,11 @@ var TransformEditor = Class.$extend(
                 oldOrientation.multiply(nodeTransformation.orientation());
                 wireTransform.setRotation(oldOrientation);
 
-                this.wireframeHelper.position = wireTransform.pos;
-                this.wireframeHelper.scale = wireTransform.scale;
-                this.wireframeHelper.quaternion = wireTransform.orientation();
+                this.wireframeHelper.position.copy(wireTransform.pos);
+                this.wireframeHelper.scale.copy(wireTransform.scale);
+                this.wireframeHelper.quaternion.copy(wireTransform.orientation());
                 this.wireframeHelper.updateMatrix();
                 this.wireframeHelper.updateMatrixWorld();
-
                 this.wireframeHelper.visible = true;
             }
         }
@@ -1446,21 +1459,21 @@ var TransformEditor = Class.$extend(
                 return;
             }
 
-            IEditor.Instance.undoStack.pushCommand(new TransformCommand(TundraSDK.framework.scene, this.targetPlaceable, event.detail.mode, value, newValue));
+            IEditor.Instance.undoStack.pushCommand(new TransformCommand(Tundra.scene, this.targetPlaceable, event.detail.mode, value, newValue));
         }
     },
 
     clearSelection : function()
     {
         if (isNotNull(this.cameraSubscription))
-            TundraSDK.framework.events.unsubscribe(this.cameraSubscription);
+            Tundra.events.unsubscribe(this.cameraSubscription);
 
         this.transformControl.detach();
-        TundraSDK.framework.renderer.scene.remove(this.transformControl);
+        Tundra.renderer.scene.remove(this.transformControl);
 
         if (isNotNull(this.wireframeHelper))
         {
-            TundraSDK.framework.renderer.scene.remove(this.wireframeHelper);
+            Tundra.renderer.scene.remove(this.wireframeHelper);
             this.wireframeHelper = null;
         }
 
@@ -1476,7 +1489,13 @@ var EditorApplication = IApplication.$extend(
     __init__ : function()
     {
         this.$super("Editor");
-        var editor = new RocketEditor("rocket");
+
+        IApplication.loadDependencies(this,
+            "lib/three-TransformControls.js", "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js")
+        .done(function()
+        {
+            var editor = new RocketEditor("rocket");
+        });
     }
 })
 

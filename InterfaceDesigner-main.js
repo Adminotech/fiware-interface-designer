@@ -75,6 +75,7 @@ var SceneWrapper = IWrapper.$extend(
 
     // Main scene methods
     // pure virtual
+    generateXml : function() {},
     deserializeFrom : function(jsonObject) {},
     entities : function() {},
     entityById : function(entityId) {},
@@ -276,7 +277,7 @@ var KeyEventWrapper = IEvent.$extend(
     },
 
     isPressed : function(key)
-    {
+    {;
         if (isNotNull(this.pressed[key]))
             return this.pressed[key];
 
@@ -342,14 +343,8 @@ var IEditor = IWrapper.$extend(
 
         this.accordionHistory = {};
 
-        this.toggleEditorShortcut = {
-            meta : "shift",
-            key : "s",
-        };
-        this.switchPanelsShortcut = {
-            meta : "shift",
-            key : "e"
-        };
+        this.toggleEditorShortcut = "ctrl+shift+s";
+        this.switchPanelsShortcut = "shift+e";
 
         // The current object in editing
         this.currentObject = null;
@@ -418,6 +413,8 @@ var IEditor = IWrapper.$extend(
     addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
     removeAttributeCommand : function(attributePtr) {},
     changeAttributeCommand : function(attributePtr, value) {},
+
+    save : function(filename) {},
 
     initTransformEditor : function() {},
     createPrimitive : function(type) {},
@@ -735,16 +732,44 @@ var IEditor = IWrapper.$extend(
 
     _onKeyEvent : function(keyEvent)
     {
-        var metaToggleEditor = this.toggleEditorShortcut.meta;
-        var keyToggleEditor = this.toggleEditorShortcut.key;
+        if (keyEvent.type !== "press")
+            return;
 
-        var metaTogglePanels = this.switchPanelsShortcut.meta;
-        var keyTogglePanels = this.switchPanelsShortcut.key;
+        var editorShortcutKeys = this.toggleEditorShortcut.replace(/ /g,'').split("+");
+        var panelsShortcutKeys = this.switchPanelsShortcut.replace(/ /g,'').split("+");
 
-        if (keyEvent.isPressed(metaToggleEditor) && keyEvent.isPressed(keyToggleEditor))
+        var editorShortcutPressed = true;
+        for (var i = 0; i < editorShortcutKeys.length; ++i)
+        {
+            if (!keyEvent.isPressed(editorShortcutKeys[i]))
+            {
+                editorShortcutPressed = false;
+                break;
+            }
+        }
+
+        var panelsShortcutPressed = true;
+        for (var i = 0; i < panelsShortcutKeys.length; ++i)
+        {
+            if (!keyEvent.isPressed(panelsShortcutKeys[i]))
+            {
+                panelsShortcutPressed = false;
+                break;
+            }
+        }
+
+        if (editorShortcutPressed)
+        {
             this.toggleEditor();
-        else if (keyEvent.isPressed(metaTogglePanels) && keyEvent.isPressed(keyTogglePanels))
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+        }
+        else if (panelsShortcutPressed)
+        {
             this.togglePanels();
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+        }
         else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("z"))
             this.undoStack.undo();
         else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("q"))
@@ -846,16 +871,14 @@ var IEditor = IWrapper.$extend(
             + parseInt(this.ui.ecEditor.entityLabel.css("padding-bottom")));
     },
 
-    setSwitchPanelsShortcut : function(meta, key)
+    setSwitchPanelsShortcut : function(shortcut)
     {
-        this.switchPanelsShortcut.meta = meta;
-        this.switchPanelsShortcut.key = key;
+        this.switchPanelsShortcut = shortcut;
     },
 
-    setToggleEditorShortcut : function(meta, key)
+    setToggleEditorShortcut : function(shortcut)
     {
-        this.toggleEditorShortcut.meta = meta;
-        this.toggleEditorShortcut.key = key;
+        this.toggleEditorShortcut = shortcut;
     },
 
     onAddEntityClicked : function()
@@ -2554,6 +2577,21 @@ var ToolkitManager = Class.$extend(
 
         $("body").append(this.ui.redoMenu);
 
+        this.ui.saveButton = $("<button/>", {
+            id : "_toolkit-saveButton",
+            title : "Save"
+        });
+        this.ui.saveButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.saveButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-disk"
+            }
+        });
+
         this.ui.quickAddButton = $("<button/>");
         this.ui.quickAddButton.text("Add...");
         this.ui.quickAddButton.css({
@@ -2762,6 +2800,7 @@ var ToolkitManager = Class.$extend(
         {
             this.toolbar.append(this.ui.undoButtonSet);
             this.toolbar.append(this.ui.redoButtonSet);
+            this.toolbar.append(this.ui.saveButton);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
             this.toolbar.append(this.ui.createButton);
             this.toolbar.append(this.ui.quickAddButton);
@@ -2787,6 +2826,37 @@ var ToolkitManager = Class.$extend(
 
         this.ui.redoButton.click(function(){
             IEditor.Instance.undoStack.redo();
+        });
+
+        this.ui.saveButton.click(function(){
+            var dialog = new ModalDialog("SaveScene", "Save current state", 450, 100);
+            dialog.appendInputBox("saveSceneFilename", "Enter file name without a file extension", "string");
+            var buttons = {
+                "Ok" : function()
+                {
+                    console.log("ASDASD");
+                    var input = $("#saveSceneFilename");
+                    var filename = input.val();
+                    console.log("Input:", filename);
+
+                    if (isNull(filename) || filename === "")
+                    {
+                        input.addClass(Utils.invalidDataName);
+                        return;
+                    }
+
+                    IEditor.Instance.save(filename);
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            };
+            dialog.addButtons(buttons);
+            dialog.exec();
         });
 
         this.ui.undoArrowButton.click(function(){
