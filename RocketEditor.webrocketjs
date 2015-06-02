@@ -1494,7 +1494,9 @@ var EditorApplication = IApplication.$extend(
             "lib/three-TransformControls.js", "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js")
         .done(function()
         {
-            var editor = new RocketEditor("rocket");
+            var editor = new RocketEditor({
+                type: "rocket"
+            });
         });
     }
 })

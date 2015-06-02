@@ -277,7 +277,7 @@ var KeyEventWrapper = IEvent.$extend(
     },
 
     isPressed : function(key)
-    {;
+    {
         if (isNotNull(this.pressed[key]))
             return this.pressed[key];
 
@@ -327,24 +327,24 @@ var IEditor = IWrapper.$extend(
         Instance : null // 'Static' object of the editor. Use with caution
     },
 
-    __init__ : function(type)
+    __init__ : function(options)
     {
         this.$super();
         IEditor.Instance = this;
-        this.type = type;
+        this.type = options.type || "";
 
         this.ui = {};                                       // JSON
         this.enabled = false;
         this.isECEditor = false;
-        this.noSelectionStr = "<i>(No entities selected)</i>";     // String
+        this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
         this.sceneEvents = [];
         this.componentEvents = [];                         // Array of EventWrapper
         this.transformEditor = null;
 
         this.accordionHistory = {};
 
-        this.toggleEditorShortcut = "ctrl+shift+s";
-        this.switchPanelsShortcut = "shift+e";
+        this.toggleEditorShortcut = options.toggleEditorShortcut || "shift+s";
+        this.switchPanelsShortcut = options.switchPanelsShortcut || "shift+e";
 
         // The current object in editing
         this.currentObject = null;
@@ -732,7 +732,7 @@ var IEditor = IWrapper.$extend(
 
     _onKeyEvent : function(keyEvent)
     {
-        if (keyEvent.type !== "press")
+        if (keyEvent.type !== "press" && keyEvent.type !== "keydown")
             return;
 
         var editorShortcutKeys = this.toggleEditorShortcut.replace(/ /g,'').split("+");
@@ -1486,7 +1486,7 @@ var IEditor = IWrapper.$extend(
             return;
 
         if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-            if (componentPtr.typeName === "EC_Name")
+            if (componentPtr.typeName === "Name")
                 this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
 
         var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
@@ -1495,7 +1495,7 @@ var IEditor = IWrapper.$extend(
             $(accordionId).remove();
         });
 
-        if (componentPtr.typeName === "EC_Name")
+        if (componentPtr.typeName === "Name")
             this.renameEntityNode(entityPtr, true);
 
         this.removeTreeItem(entityPtr, componentPtr);
@@ -1511,12 +1511,12 @@ var IEditor = IWrapper.$extend(
             if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
             {
                 this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-                if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+                if (componentPtr.typeName === "Name" && attributeName === "name")
                     this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
             }
         }
 
-        if (componentPtr.typeName === "EC_Name" && attributeName === "name")
+        if (componentPtr.typeName === "Name" && attributeName === "name")
             this.renameEntityNode(entityPtr);
     },
 
@@ -2834,10 +2834,8 @@ var ToolkitManager = Class.$extend(
             var buttons = {
                 "Ok" : function()
                 {
-                    console.log("ASDASD");
                     var input = $("#saveSceneFilename");
                     var filename = input.val();
-                    console.log("Input:", filename);
 
                     if (isNull(filename) || filename === "")
                     {
