@@ -1,15 +1,23 @@
-<!doctype html>
- <html lang="en">
+<!DOCTYPE html>
+ <html>
  <head>
     <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
     <link rel="stylesheet" href="lib/skin-win8/ui.fancytree.css">
  
+    <style>
+        #mainContent {
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+        }
+    </style>
     <script type="text/javascript" src="lib/xml3d.js"></script>
     <script type="text/javascript" src="lib/xml3d.tools.js"></script>
     <script type="text/javascript" src="lib/jquery.js"></script>
-    <script type="text/javascript" src="lib/jquery-ui.js"></script>
+    <script type="text/javascript" src="lib/jquery-ui.js"></script> 
     <script type="text/javascript" src="lib/jquery.fancytree-all.min.js"></script>
     <script type="text/javascript" src="lib/jquery.contextmenu.js"></script>
+    <script type="text/javascript" src="lib/FileSaver.min.js"></script>
+    <script type="text/javascript" src="lib/vkbeautify.0.99.00.beta.js"></script>
     <script type="text/javascript" src="lib/classy.js"></script>
     <script type="text/javascript" src="InterfaceDesigner-main.js"></script>
     <script type="text/javascript" src="XML3DEditor.js"></script>
@@ -21,13 +29,18 @@
             var camera = new XML3D.tools.MouseKeyboardFlyController(cameraTransformable, { moveSpeed: 0.2, rotateSpeed: 2 });
             camera.attach();
             // XML3D editor instance
-            var editor = new XML3DEditor("mainContent", "mainCanvas", "resources/");
+            var editor = new XML3DEditor({
+                mainContent: "mainContent", 
+                canvas: "mainCanvas", 
+                resourcesPath: "resources/"
+            });
+
         }, false);
     </script>
  </head>
  <body>
-    <div id="mainContent" style="width:100%; height:100%">
-        <xml3d id="mainCanvas" activeView="#cameraView" style="width: 100%;height:100%;background-color:white;">
+    <div id="mainContent">
+        <xml3d id="mainCanvas" activeView="#cameraView" style="width:100%; height:100%;background-color:white;">
             <defs>
                 <transform id="cameraTransform"></transform>
             </defs>
