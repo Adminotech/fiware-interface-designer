@@ -163,17 +163,11 @@ var CreatePrimitiveCommand = ICommand.$extend(
         meshRefAttr.set(this.ref);
 
         var transform = XML3D.tools.MotionFactory.createTransformable(element._ptr);
-        // if (!IEditor.Instance.isRegistered("onEntityCreated"))
-        //     IEditor.Instance.onEntityCreated(element);
     },
 
     undo : function()
     {
         var element = this.scenePtr.entityById(this.id);
-        // if (isNotNull(element))
-        //     if (!IEditor.Instance.isRegistered("onEntityRemoved"))
-        //         IEditor.Instance.onEntityRemoved(element);
-
         this.scenePtr.removeEntity(this.id);
     }
 });
@@ -725,7 +719,7 @@ var XML3DScene = SceneWrapper.$extend(
             entityPtr = new XML3DElement(parentGroup);
 
         var attributeName = "value"
-        var attributeValue = node.innerText;
+        var attributeValue = node.textContent;
         var attributeIndex = -1;
 
         this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);

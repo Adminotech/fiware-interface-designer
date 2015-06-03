@@ -1554,6 +1554,7 @@ var IEditor = IWrapper.$extend(
         }
 
         this.ui.ecEditor.holder.on("change", "input", this.onAttributesEdit);
+        this.ui.ecEditor.holder.on("keydown", "input", function(e) { e.stopPropagation(); });
         this.ui.ecEditor.holder.on("change", "select", this.onAttributesEdit);
 
         // this.ui.ecEditor.holder.sortable();
@@ -3332,6 +3333,11 @@ var ModalDialog = Class.$extend(
 
         inputElement.css({
             "float" : "right"
+        });
+
+        inputElement.on("keydown", function(event)
+        {
+            event.stopPropagation();
         });
 
         this.appendLabel(label);
