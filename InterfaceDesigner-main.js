@@ -8,6 +8,21 @@ function isNotNull(ptr)
     return !isNull(ptr);
 }
 
+function __()
+{
+    var instanceType = arguments[0];
+    var ptr = arguments[1];
+    if (ptr.InterfaceDesignerWrapper == undefined)
+    {
+        var args = [].slice.call(arguments, 1);
+        var instance = Object.create(instanceType.prototype);
+        instanceType.apply(instance, args);
+        return instance;
+    }
+    else
+        return ptr.InterfaceDesignerWrapper;
+}
+
 var IWrapper = Class.$extend(
 {
     __init__ : function()
@@ -448,21 +463,8 @@ var IEditor = IWrapper.$extend(
         var invalidDataClass = $("<style/>");
         invalidDataClass.text(".invalidData { border : 2px solid red; }");
 
-        // Some style for context menu items
         var menuItemsClass = $("<style/>");
-        menuItemsClass.text(".sceneTree-contextMenu-itemsClass a { \
-            font-family: Arial; \
-            font-size :  12px; \
-            background-color  : #F2F2F2; \
-            color             : #333333; \
-            text-decoration   : none; \
-            display           : block; \
-            margin : 10; \
-            padding           : 5; \
-            }\
-        .sceneTree-contextMenu-itemsClass a:hover { \
-            background-color  : #000000; \
-            color             : #FFFFFF; }");
+        menuItemsClass.text(".contextmenu-z { z-index: 5; }");
 
         var accordionStyle = $("<style/>"); // #F7EEDC
         accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
@@ -1233,19 +1235,17 @@ var IEditor = IWrapper.$extend(
 
     createContextMenu : function()
     {
-        var menuItemHoverInCss = {
-            "background-color" : "rgb(150,150,150)",
-            "color" : "rgb(255,255,255)"
-        };
-        var menuItemHoverOutCss = {
-            "background-color" : "#F2F2F2",
-            "color"   : "#333333"
-        };
-
-        var self = this;
-        this.ui.sceneTree.holder.contextMenu('sceneTree-contextMenu',{
-            "Edit ..." :{
-                click : function(element){
+        this.ui.sceneTree.holder.contextmenu({
+            addClass: "contextmenu-z",
+            delegate: "span.fancytree-node",
+            menu: [
+                {title: "Edit", cmd: "edit", uiIcon: "ui-icon-pencil"},
+                {title: "Delete", cmd: "delete", uiIcon: "ui-icon-trash"},
+            ],
+            select: function(event, ui) {
+                var element = ui.target[0];
+                if (ui.cmd === "edit")
+                {
                     var node = $.ui.fancytree.getNode(element);
                     var target = node.key.split("-");
 
@@ -1258,12 +1258,10 @@ var IEditor = IWrapper.$extend(
 
                     var entity = IEditor.scene.entityById(entityId);
                     if (isNotNull(entity))
-                        self.selectEntity(entity, componentId);
-                },
-                klass : "sceneTree-contextMenu-itemsClass"
-            },
-            "Delete" : {
-                click : function(element){
+                        this.selectEntity(entity, componentId);
+                }
+                else if (ui.cmd === "delete")
+                {
                     var node = $.ui.fancytree.getNode(element);
                     var target = node.key.split("-");
                     var entityId = -1;
@@ -1306,22 +1304,8 @@ var IEditor = IWrapper.$extend(
                             confirmDialog.exec();
                         }
                     }
-                },
-                klass : "sceneTree-contextMenu-itemsClass"
-            }
-        }, 
-        {
-            delegateEventTo: 'span.fancytree-title',
-            disable_native_context_menu : true
-        });
-
-        var contextMenu = $("#sceneTree-contextMenu");
-        contextMenu.css({
-            "background-color": "#F2F2F2",
-            "border": "1px solid #999999",
-            "list-style-type": "none",
-            "margin": 10,
-            "padding": 5
+                }
+            }.bind(this)
         });
     },
 
@@ -1858,7 +1842,7 @@ var IEditor = IWrapper.$extend(
             confirmDialog.exec();
         })
 
-        var attrNameColumn = $("<td/>").css(Utils.attributeTableColumnStyle);
+        var attrNameColumn = $("<td/>", {id : "label-" + idOfElements}).css(Utils.attributeTableColumnStyle);
         if (!isDynamic)
             attrNameColumn.attr("colspan", 2);
 

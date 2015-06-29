@@ -8,8 +8,9 @@ define([
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
-        "meshmoon-applications/src/editor/InterfaceDesigner-main"
-    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
+        "meshmoon-applications/src/editor/InterfaceDesigner-main",
+        "meshmoon-applications/src/editor/lib/jquery.ui-contextmenu.min"
+    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor, _jquicm) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -451,7 +452,7 @@ var RocketScene = SceneWrapper.$extend(
         var entities = Tundra.scene.entities;
         for (var i = 0; i < entities.length; i++)
             if (isNotNull(entities[i]))
-                result.push(new RocketEntity(entities[i]));
+                result.push(__(RocketEntity, entities[i]));
 
         return result;
     },
@@ -460,7 +461,7 @@ var RocketScene = SceneWrapper.$extend(
     {
         var entityPtr = Tundra.scene.entityById(entityId);
         if (entityPtr !== null && entityPtr !== undefined)
-            return new RocketEntity(entityPtr);
+            return __(RocketEntity, entityPtr);
 
         return null;
     },
@@ -482,7 +483,7 @@ var RocketScene = SceneWrapper.$extend(
         }
 
         var entity = Tundra.scene.createEntity(id, components, change, replicated, componentsReplicated);
-        return new RocketEntity(entity);
+        return __(RocketEntity, entity);
     },
 
     removeEntity : function(entityId)
@@ -647,36 +648,36 @@ var RocketScene = SceneWrapper.$extend(
 
     _onEntityCreated : function(entityPtr)
     {
-        var entity = new RocketEntity(entityPtr);
+        var entity = __(RocketEntity, entityPtr);
         this.callback("onEntityCreated", entity);
     },
 
     _onEntityRemoved : function(entityPtr)
     {
-        var entity = new RocketEntity(entityPtr);
+        var entity = __(RocketEntity, entityPtr);
         this.callback("onEntityRemoved", entity);
     },
 
     _onComponentCreated : function(entityPtr, componentPtr)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(RocketEntity, entityPtr);
+        var component = __(RocketComponent, componentPtr);
 
         this.callback("onComponentCreated", entity, component);
     },
 
     _onComponentRemoved : function(entityPtr, componentPtr)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(RocketEntity, entityPtr);
+        var component = __(RocketComponent, componentPtr);
 
         this.callback("onComponentRemoved", entity, component);
     },
 
     _onAttributeChanged : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(RocketEntity, entityPtr);
+        var component = __(RocketComponent, componentPtr);
 
         this.callback("onAttributeChanged", entity, component, attributeIndex, attributeName, attributeValue);
     },
@@ -699,7 +700,7 @@ var RocketScene = SceneWrapper.$extend(
     logError : function(text)
     {
         Tundra.client.logError("[Editor]: " + text);
-    }    
+    }
 });
 
 var RocketEntity = EntityWrapper.$extend(
@@ -710,6 +711,8 @@ var RocketEntity = EntityWrapper.$extend(
         this._ptr = entityPtr;
 
         this.callbacks = {};
+
+        entityPtr.InterfaceDesignerWrapper = this;
     },
 
     setName : function(name)
@@ -735,7 +738,7 @@ var RocketEntity = EntityWrapper.$extend(
         for (var i = 0; i < this._ptr.components.length; i++)
         {
             var componentPtr = this._ptr.components[i];
-            result.push(new RocketComponent(componentPtr));
+            result.push(__(RocketComponent, componentPtr));
         }
 
         return result;
@@ -749,7 +752,7 @@ var RocketEntity = EntityWrapper.$extend(
         var attrChange = isLocal ? AttributeChange.LocalOnly : AttributeChange.Replicated;
         var componentPtr = this._ptr.createComponent(typeName, name, attrChange);
         if (isNotNull(componentPtr))
-            return new RocketComponent(componentPtr);
+            return __(RocketComponent, componentPtr);
 
         return null;
     },
@@ -766,7 +769,7 @@ var RocketEntity = EntityWrapper.$extend(
 
         var componentPtr = this._ptr.getComponent(type, name);
         if (componentPtr !== null && componentPtr !== undefined)
-            return new RocketComponent(componentPtr);
+            return __(RocketComponent, componentPtr);
 
         return null;
     },
@@ -778,7 +781,7 @@ var RocketEntity = EntityWrapper.$extend(
 
         var componentPtr = this._ptr.getComponentById(componentId);
         if (componentPtr !== null && componentPtr !== undefined)
-            return new RocketComponent(componentPtr);
+            return __(RocketComponent, componentPtr);
 
         return null;
     },
@@ -833,16 +836,16 @@ var RocketEntity = EntityWrapper.$extend(
 
     _onComponentCreated : function(entity, component)
     {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
+        var entityPtr = __(RocketEntity, entity);
+        var componentPtr = __(RocketComponent, component);
 
         this.callback("onComponentCreated", entityPtr, componentPtr);
     },
 
     _onComponentRemoved : function(entity, component)
     {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
+        var entityPtr = __(RocketEntity, entity);
+        var componentPtr = __(RocketComponent, component);
 
         this.callback("onComponentRemoved", entityPtr, componentPtr);
     }
@@ -856,6 +859,8 @@ var RocketComponent = ComponentWrapper.$extend(
         this._ptr = componentPtr;
 
         this.callbacks = {};
+
+        componentPtr.InterfaceDesignerWrapper = this;
     },
 
     isDynamic : function()
@@ -884,7 +889,7 @@ var RocketComponent = ComponentWrapper.$extend(
         {
             var attributePtr = this._ptr.attributes[i];
             if (isNotNull(attributePtr))
-                result.push(new RocketAttribute(attributePtr, this));
+                result.push(__(RocketAttribute, attributePtr, this));
         }
 
         return result;
@@ -905,7 +910,7 @@ var RocketComponent = ComponentWrapper.$extend(
 
         var attributePtr = this._ptr.attributes[name];
         if (isNotNull(attributePtr))
-            return new RocketAttribute(attributePtr, this);
+            return __(RocketAttribute, attributePtr, this);
 
         return null;
     },
@@ -915,7 +920,7 @@ var RocketComponent = ComponentWrapper.$extend(
         if (this.expired())
             return null;
 
-        return new RocketAttribute(this._ptr.getAttributeByIndex(index), this);
+        return __(RocketAttribute, this._ptr.getAttributeByIndex(index), this);
     },
 
     removeAttribute : function(index)
@@ -1000,23 +1005,23 @@ var RocketComponent = ComponentWrapper.$extend(
 
     _onAttributeAdded : function(component, attribute)
     {
-        var componentPtr = new RocketComponent(component);
-        var attributePtr = new RocketAttribute(attribute, componentPtr);
+        var componentPtr = __(RocketComponent, component);
+        var attributePtr = __(RocketAttribute, attribute, componentPtr);
 
         this.callback("onAttributeAdded", componentPtr, attributePtr);
     },
 
     _onAttributeChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
     {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
+        var entityPtr = __(RocketEntity, entity);
+        var componentPtr = __(RocketComponent, component);
 
         this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
     },
 
     _onAttributeAboutToBeRemoved : function(component, attributeIndex, attributeName)
     {
-        var componentPtr = new RocketComponent(component);
+        var componentPtr = __(RocketComponent, component);
 
         this.callback("onAttributeAboutToBeRemoved", componentPtr, attributeIndex, attributeName);
     }
@@ -1028,12 +1033,14 @@ var RocketAttribute = AttributeWrapper.$extend(
     {
         var parent = null;
         if (isNull(owner))
-            parent = new RocketComponent(attributePtr.owner);
+            parent = __(RocketComponent, attributePtr.owner);
         else
             parent = owner;
 
         this.$super(attributePtr.index, attributePtr.typeId, attributePtr.name, parent);
         this._ptr = attributePtr;
+
+        attributePtr.InterfaceDesignerWrapper = this;
     },
 
     get : function()
@@ -1054,7 +1061,7 @@ var RocketAttribute = AttributeWrapper.$extend(
 
     serialize : function()
     {
-        var result = { 
+        var result = {
             name : this.name,
             typeId : this.typeId,
             index : this.index
@@ -1066,7 +1073,7 @@ var RocketAttribute = AttributeWrapper.$extend(
                 pos : value.pos,
                 rot : value.rot,
                 scale : value.scale
-            };       
+            };
         else
             result.value = value;
 
@@ -1097,9 +1104,9 @@ var RocketRaycastResult = RaycastResult.$extend(
         this.$super();
 
         if (isNotNull(raycastResult.entity))
-            this.entity = new RocketEntity(raycastResult.entity);
+            this.entity = __(RocketEntity, raycastResult.entity);
         if (isNotNull(raycastResult.component))
-            this.component = new RocketComponent(raycastResult.component);
+            this.component = __(RocketComponent, raycastResult.component);
 
         this.pos = raycastResult.pos;
         this.distance = raycastResult.distance;
@@ -1111,7 +1118,7 @@ var RocketRaycastResult = RaycastResult.$extend(
 
 var RocketEditor = IEditor.$extend(
 {
-    __classvars__ : 
+    __classvars__ :
     {
         scene : null
     },
@@ -1134,7 +1141,7 @@ var RocketEditor = IEditor.$extend(
         this.gridHelper.setColors(new THREE.Color(0xFF0000), new THREE.Color(0x000000));
     },
 
-    /* virtual */ 
+    /* virtual */
     isConnected : function()
     {
         return Tundra.client.isConnected();
@@ -1171,20 +1178,20 @@ var RocketEditor = IEditor.$extend(
         Tundra.ui.addWidgetToScene(element);
     },
 
-    /* pure virtual */ 
+    /* pure virtual */
     registerClientConnectedCallback : function(context, callback)
     {
         Tundra.client.onConnected(context, callback);
     },
 
-    /* pure virtual */ 
+    /* pure virtual */
     registerKeyEventCallback : function(context, callback)
     {
         this.registerCallback("onKeyEvent", context, callback);
         Tundra.input.onKeyEvent(this, this.onKeyEvent);
     },
 
-    /* pure virtual */ 
+    /* pure virtual */
     registerMouseEventCallback : function(context, callback)
     {
         this.registerCallback("onMouseEvent", context, callback);
@@ -1296,7 +1303,7 @@ var RocketEditor = IEditor.$extend(
 
     removeAttributeCommand : function(attributePtr)
     {
-        this.undoStack.pushAndExec(new RemoveAttributeCommand(RocketEditor.scene, attributePtr));   
+        this.undoStack.pushAndExec(new RemoveAttributeCommand(RocketEditor.scene, attributePtr));
     },
 
     changeAttributeCommand : function(attributePtr, newValue)

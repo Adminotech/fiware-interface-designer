@@ -8,7 +8,7 @@ function getChildrenGroups(parentNode)
     var result = [];
     var children = $(parentNode).children();
     for (var i = 0; i < children.length; i++)
-        result.push(new XML3DElement(children[i]));
+        result.push(__(XML3DElement, children[i]))
 
     return result;
 }
@@ -251,7 +251,8 @@ var XML3DScene = SceneWrapper.$extend(
         },
 
         configuration : {},
-        childElements : {}
+        childElements : {},
+        attributeShortcuts : {}
     },
 
     __init__ : function(canvasId)
@@ -272,6 +273,7 @@ var XML3DScene = SceneWrapper.$extend(
         var allClasses = XML3D.classInfo;
         var conf = XML3DScene.configuration;
         var childElements = XML3DScene.childElements;
+        var attrShortcuts = XML3DScene.attributeShortcuts;
 
         for (var i in allClasses)
         {
@@ -383,6 +385,34 @@ var XML3DScene = SceneWrapper.$extend(
                 childElements[i] = ["img", "video"];
             else
                 childElements[i] = [];
+
+            if (i === "data" || i === "shader" || i === "lightshader" || i === "proto" || i === "mesh")
+            {
+                attrShortcuts[i] = {};
+                attrShortcuts[i]["src"] = "data";
+                attrShortcuts[i]["proto"] = "data";
+
+                if (i === "shader")
+                    attrShortcuts[i]["script"] = ["urn:xml3d:shader:matte", "urn:xml3d:shader:diffuse", "urn:xml3d:shader:phong"];
+                else if (i === "lightshader")
+                    attrShortcuts[i]["script"] = ["urn:xml3d:lightshader:point", "urn:xml3d:lightshader:spot", "urn:xml3d:lightshader:directional"];
+            }
+            else if (i === "group")
+            {
+                attrShortcuts[i] = {};
+                attrShortcuts[i]["transform"] = "transform";
+                attrShortcuts[i]["shader"] = "shader";
+            }
+            else if (i === "light")
+            {
+                attrShortcuts[i] = {};
+                attrShortcuts[i]["shader"] = "lightshader";
+            }
+            else if (i === "xml3d")
+            {
+                attrShortcuts[i] = {};
+                attrShortcuts[i]["activeview"] = "view";
+            }
         }
 
         var observer = new MutationObserver(this.onMutation.bind(this));
@@ -406,7 +436,7 @@ var XML3DScene = SceneWrapper.$extend(
         var result = XML3DScene.elementById(this.canvas, entityId);
 
         if (isNotNull(result))
-            return new XML3DElement(result);
+            return __(XML3DElement, result);
 
         return null;
     },
@@ -431,7 +461,7 @@ var XML3DScene = SceneWrapper.$extend(
         $(element).data("editorId", id);
 
         parent.appendChild(element);
-        var newElement = new XML3DElement(element);
+        var newElement = __(XML3DElement, element);
         newElement.setName(name);
 
         if (isNotNull(children) && children instanceof Array)
@@ -651,23 +681,23 @@ var XML3DScene = SceneWrapper.$extend(
 
     _onEntityCreated : function(element)
     {
-        this.callback("onEntityCreated", new XML3DElement(element));
+        this.callback("onEntityCreated", __(XML3DElement, element));
     },
 
     _onEntityRemoved : function(element)
     {
-        this.callback("onEntityRemoved", new XML3DElement(element));
+        this.callback("onEntityRemoved", __(XML3DElement, element));
     },
 
     _onComponentCreated : function(parentGroup, element)
     {
         var entityPtr = null;
-        var componentPtr = new XML3DElement(element);
+        var componentPtr = __(XML3DElement, element);
 
         if (parentGroup === this.canvasDOM)
             entityPtr = componentPtr;
         else
-            entityPtr = new XML3DElement(parentGroup);
+            entityPtr = __(XML3DElement, parentGroup);
 
         this.callback("onComponentCreated", entityPtr, componentPtr);
     },
@@ -675,12 +705,12 @@ var XML3DScene = SceneWrapper.$extend(
     _onComponentRemoved : function(parentGroup, element)
     {
         var entityPtr = null;
-        var componentPtr = new XML3DElement(element);
+        var componentPtr = __(XML3DElement, element);
 
         if (parentGroup === this.canvasDOM)
             entityPtr = componentPtr;
         else
-            entityPtr = new XML3DElement(parentGroup);
+            entityPtr = __(XML3DElement, parentGroup);
 
         this.callback("onComponentRemoved", entityPtr, componentPtr);
     },
@@ -691,12 +721,12 @@ var XML3DScene = SceneWrapper.$extend(
         var parentGroup = getParentGroup(componentNode);
 
         var entityPtr = null;
-        var componentPtr = new XML3DElement(componentNode);
+        var componentPtr = __(XML3DElement, componentNode);
 
         if (parentGroup === this.canvasDOM)
             entityPtr = componentPtr;
         else
-            entityPtr = new XML3DElement(parentGroup);
+            entityPtr = __(XML3DElement, parentGroup);
 
         var attributeName = mutationRecord.attributeName;
         var attributeValue = componentNode.getAttribute(attributeName);
@@ -711,12 +741,12 @@ var XML3DScene = SceneWrapper.$extend(
         var parentGroup = getParentGroup(componentNode);
 
         var entityPtr = null;
-        var componentPtr = new XML3DElement(componentNode);
+        var componentPtr = __(XML3DElement, componentNode);
 
         if (parentGroup === this.canvasDOM)
             entityPtr = componentPtr;
         else
-            entityPtr = new XML3DElement(parentGroup);
+            entityPtr = __(XML3DElement, parentGroup);
 
         var attributeName = "value"
         var attributeValue = node.textContent;
@@ -760,6 +790,7 @@ var XML3DElement = EntityWrapper.$extend(
 
         this.$super(id, name, false, false);
         this._ptr = entityPtr;
+        entityPtr.InterfaceDesignerWrapper = this;
     },
 
     parentId : function()
@@ -866,7 +897,7 @@ var XML3DElement = EntityWrapper.$extend(
 
         var children = $(this._ptr).children();
         for (var i = 0; i < children.length; i++)
-            result.push(new XML3DElement(children[i]));
+            result.push(__(XML3DElement, children[i]));
 
         return result;
     },
@@ -910,7 +941,7 @@ var XML3DElement = EntityWrapper.$extend(
         }
 
         this._ptr.appendChild(newComponent);
-        return new XML3DElement(newComponent);
+        return __(XML3DElement, newComponent);
     },
 
     createAttribute : function(typeId, name)
@@ -959,7 +990,7 @@ var XML3DElement = EntityWrapper.$extend(
 
         var component = XML3DScene.elementById($(this._ptr), componentId);
         if (isNotNull(component))
-            return new XML3DElement(component);
+            return __(XML3DElement, component);
 
         return null;
     },
@@ -1129,8 +1160,8 @@ var XML3DRaycastResult = RaycastResult.$extend(
         if (isNotNull(hitNode))
         {
             var parentGroup = getParentGroup(hitNode);
-            this.entity = new XML3DElement(parentGroup);
-            this.component = new XML3DElement(hitNode);
+            this.entity = __(XML3DElement, parentGroup);
+            this.component = __(XML3DElement, hitNode);
         }
 
         // TODO: Implement when XML3D has getElementByRay implemented
@@ -1181,6 +1212,69 @@ var XML3DEditor = IEditor.$extend(
 
         this.ui.sceneTree.addEntityButton.button("option", "label", "Add new element...");
         this.ui.ecEditor.addCompButton.button("option", "label", "Add new child element");
+
+        this.ui.ecEditor.panel.on("mousedown", "input", function(e)
+        {
+            if (e.button != 2)
+                return;
+
+            var name = $(e.target).data("attrData").name;
+            var id = $(e.target).data("attrData").parentCompId;
+
+            var element = IEditor.scene.entityById(id);
+            var attrs = XML3DScene.attributeShortcuts[element.typeName];
+            if (attrs == null)
+                return;
+
+            var values = XML3DScene.attributeShortcuts[element.typeName][name];
+            if (Array.isArray(values))
+                this.createAttributeMenu(values, element.attributeByName(name));
+            else if (typeof(values) === "string")
+            {
+                var xml3dElements = $(values);
+                if (xml3dElements.length == 0)
+                    return;
+
+                var items = [];
+                for (var i = 0; i < xml3dElements.length; ++i)
+                {
+                    var elementId = xml3dElements[i].getAttribute("id");
+                    if (elementId != "")
+                        items.push(elementId);
+                }
+
+                if (items.length > 0)
+                    this.createAttributeMenu(items, element.attributeByName(name));
+            }
+        }.bind(this));
+    },
+
+    createAttributeMenu : function(items, attribute)
+    {
+        var menuItems = [];
+        for (var i = 0; i < items.length; ++i)
+        {
+            var item = items[i];
+            menuItems.push({
+                title: item,
+                cmd : item,
+            });
+        }
+
+        this.ui.ecEditor.holder.contextmenu({
+            addClass : "contextmenu-z",
+            delegate: "input",
+            menu: menuItems,
+            select : function(event, ui)
+            {
+                attribute.set("#" + ui.cmd);
+            }
+        });
+
+        $(document).one("click", function()
+        {
+            this.ui.ecEditor.holder.contextmenu("destroy");
+        }.bind(this));
     },
 
     width : function()
