@@ -1,12 +1,51 @@
+/**
+    Global available functions. Not an actual object, used only to store all the globally available methods and variables for documentation purposes.
+    @class (global)
+*/
+
+/**
+    Checks if the object is null or undefined
+    @function
+    @memberof (global)
+    @param {*} ptr The object to be checked
+    @return {boolean} - true if null or undefined, false otherwise
+    @example
+    * if (isNull(someObject))
+    *     console.log("someObject is null");
+*/
 function isNull(ptr)
 {
     return (ptr === undefined || ptr === null);
 }
 
+/**
+    Checks if the object is not null nor undefined
+    @function
+    @memberof (global)
+    @param {*} ptr The object to be checked
+    @return {boolean} - true if not null nor undefined, false otherwise
+    @example
+    * if (isNotNull(someObject))
+    *     console.log("someObject is not null");
+*/
 function isNotNull(ptr)
 {
     return !isNull(ptr);
 }
+
+/**
+    Main method for wrapping.<br>
+    For better performance, use this method when wrapping objects from the underlying system. This will create an instance of the wrapped object, or return an existing one.
+    @function
+    @memberof (global)
+    @param {*} instanceType The class that the instance be made of.
+    @param {*} ptr The object that should be wrapped
+    @param {...*} [arguments] The arguments that the constructor of `instanceType` be called with
+    @return {object} - Wrapped object
+    @example
+    * var object = new SomeObject();
+    * var wrappedObject = __(SomeObject, object, params);
+*/
 
 function __()
 {
@@ -17,6 +56,7 @@ function __()
         var args = [].slice.call(arguments, 1);
         var instance = Object.create(instanceType.prototype);
         instanceType.apply(instance, args);
+        ptr.InterfaceDesignerWrapper = instance;
         return instance;
     }
     else
@@ -24,18 +64,34 @@ function __()
 }
 
 var IWrapper = Class.$extend(
+/** @lends IWrapper.prototype */
 {
+    /**
+        Main wrapper interface. Every object in the interface designer is descendant of IWrapper.
+        Provides the pointer to the main wrapped object, as well as registers and fires callbacks.
+        @constructs
+    */
     __init__ : function()
     {
         this._ptr = null;
         this.callbacks = {};
     },
 
+    /** 
+        Checks if the main wrapped object has expired, i.e. the pointer is not valid anymore
+        @return {boolean}
+    */
     expired : function()
     {
         return isNull(this._ptr);
     },
 
+    /**
+        Registers a callback for a custom event of your choice
+        @param {string} eventType The type of event being registered
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {Function} callback The callback to be called when the 'eventType' event is fired
+    */
     registerCallback : function(eventType, context, callback)
     {
         if (isNull(this.callbacks[eventType]))
@@ -47,11 +103,19 @@ var IWrapper = Class.$extend(
         });
     },
 
+    /**
+        Checks if a callback exists for `eventType`.
+        @param {string} eventType The type of event being checked
+        @return {boolean} - `true` if at least one callback has been registered, `false` otherwise
+    */
     isRegistered : function(eventType)
     {
         return (isNotNull(this.callbacks[eventType]) && this.callbacks[eventType].length !== 0);
     },
 
+    /**
+        Unregisters all callbacks.
+    */
     unregisterAll : function()
     {
         for (var i in this.callbacks)
@@ -60,7 +124,12 @@ var IWrapper = Class.$extend(
         this.callbacks = {};
     },
 
-    callback : function(eventType, arg, arg1, arg2, arg3, arg4)
+    /**
+        Executes the custom event `eventType`
+        @param {string} eventType The type of event executed
+        @param {...any} [arguments] The arguments that this callback needs to be called with 
+    */
+    callback : function(eventType)
     {
         if (isNull(this.callbacks[eventType]))
             return;
@@ -69,204 +138,715 @@ var IWrapper = Class.$extend(
         if (allRegistered.length == 0)
             return;
 
+        var args = [].slice.call(arguments, 1);
         for (var i = 0; i < allRegistered.length; i++)
         {
             var context = allRegistered[i].context;
             var callback = allRegistered[i].callback;
 
-            callback.call(context, arg, arg1, arg2, arg3, arg4);
+            callback.apply(context, args);
         }
     }
 });
 
 var SceneWrapper = IWrapper.$extend(
+/** @lends SceneWrapper.prototype */
 {
+    /**
+        Wrapper interface for the underlying scene object.<br>
+        The scene object should provide access to manipulating the scene, such as entities and components, as well as scene events such as entity / component / attribute changes.
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function()
     {
         this.$super();
+        /**
+            String for displaying the entities in UI
+            @type {string}
+            @default "entity"
+            @virtual
+        */
         this.entityString = "entity";
+
+        /**
+            String for displaying the components in UI
+            @type {string}
+            @default "component"
+            @virtual
+        */
         this.componentString = "component";
     },
 
-    // Main scene methods
-    // pure virtual
-    generateXml : function() {},
+    /**
+        Deserialize a scene described as JSON object.<br>
+        The implementations of this method should re-create a whole scene from a JSON string.
+        @param {string} jsonObject The JSON as string
+        @virtual
+    */
     deserializeFrom : function(jsonObject) {},
+
+
+    /**
+        Returns all entities present in the scene at the moment.<br>
+        The implementation should return objects that inherit {@link EntityWrapper}
+        @virtual
+        @return {Array} - Array of {@link EntityWrapper} objects.
+    */
     entities : function() {},
+
+    /**
+        Returns the entity for the given `entityId`.<br>
+        The implementation should return an object that inherits {@link EntityWrapper}
+        @param {number} entityId The ID of the entity to be queried
+        @virtual
+        @return {?EntityWrapper} - The entity with id `entityId` or `null` if no such entity exists.
+    */
     entityById : function(entityId) {},
+
+    /**
+        Creates an entity.<br>
+        The implementation should create an entity in the underlying system, then return a wrapped object that inherits {@link EntityWrapper}
+        @param {number} id A unique ID of the entity to be created. By agreement, a value of 0 should mean that this ID should be generated
+        @param {string[]} [components] An array of component type names
+        @param {number} [change=0] Enumeration value of how the scene should react on the change when synchronization is implemented also.
+        @param {boolean} [replicated=true] If this entity should be replicated to the server in systems where synchronization is implemented.
+        @param {boolean} [componentsReplicated=true] If this entity's components should be replicated to the server in systems where synchronization is implemented.
+        @virtual
+        @return {?EntityWrapper} - The new created entity wrapper object.
+    */
     createEntity : function(id, components, change, replicated, componentsReplicated) {},
+
+    /**
+        Removes an entity by given ID.<br>
+        The implementation should remove the entity in the underlying system
+        @param {number} entityId The ID of the entity to be removed
+        @virtual
+    */
     removeEntity : function(entityId) {},
+
+    /**
+        Returns a list of components that are available in the underlying system.<br>
+        The implementation should get all component types from the underlying system and push them in an array.onization is implemented.
+        @virtual
+        @return {string[]} - A list of the component type names available.
+    */
     registeredComponents : function() {},
+
+    /**
+        Returns if the underlying system allows components that share the same name.
+        @virtual
+        @return {boolean} - `true` if components can share a name, `false` otherwise
+    */
     doesAllowSameNamedComponents : function() {},
+
+    /**
+        Perform a raycast.<br>
+        The implementation of this method should execute a raycast on the underlying system's renderer.
+        @param {number} [x] The X screen coordinate. If left out, it will be taken from the current mouse position.
+        @param {number} [y] The Y screen coordinate. If left out, it will be taken from the current mouse position.
+        @param {number} [selectionLayer=1] Selection layer that the objects will be checked for.
+        @virtual
+        @return {RaycastResult} - A {@link RaycastResult} object that contains information about the 3D object that has been intersected with the ray.
+    */
     doRaycast : function(x, y, selectionLayer) {},
-    componentNameWithPrefix : function(componentName) {},
-    componentNameInHumanFormat : function(typeName) {},
+
+    /**
+        Adds a prefix to the component type name.<br>
+        The default implementation is that it will return the same component name that is provided as argument.<br>
+        If the underlying system uses prefixes to differ component type names, this method should be implemented to reflect that.
+        @param {string} componentName The name of the component
+        @virtual
+        @return {string} - Component name with prefix
+    */
+    componentNameWithPrefix : function(componentName)
+    {
+        return componentName;
+    },
+
+    /**
+        Removes a prefix, or modifies the original component type name to be in human-readable format.<br>
+        The default implementation is that it will return the same component type name that is provided as argument.<br>
+        If the underlying system uses prefixes or other means to differ component type names, this method should be implemented to trim out the extra.
+        @param {string} componentName The name of the component
+        @virtual
+        @return {string} - Component name with prefix
+    */
+    componentNameInHumanFormat : function(typeName)
+    {
+        return typeName;
+    },
+
+    /** 
+        Returns an attribute name from given attribute type ID.<br>
+        The implementation of this method should provide mapping from attribute type unique ID, to a human-readable attribute name string
+        @param {number} attrTypeId The attribute type ID
+        @virtual
+        @return {string} - Attribute name
+    */
     attributeTypeToName : function(attrTypeId) {},
+
+    /** 
+        Returns a list of all attribute type IDs.<br>
+        The implementation of this method should provide a list of all attribute type IDs that are used from the underlying system.
+        @virtual
+        @return {number[]} - A list of attribute IDs
+    */
     attributeTypeIds : function() {},
+
+    /**
+        Resets the scene.<br>
+        The implementation of this method should clear, i.e. remove everything from the scene in the underlying system.
+        @virtual
+    */
+
     reset : function() {},
+
+    /**
+        Unsubscribe from a scene event.<br>
+        The implementation of this method should unsubscribe from the scene events using the `subscription` object provided, if such mechanism is used.
+        @param {object} subscription The subscription information.
+        @virtual
+    */
     unsubscribe : function(subscription) {},
 
-    // virtual
+    /**
+        Returns if the attribute for a given type ID is an atomic value (not array, or object etc). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is atomic.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if atomic, false otherwise
+    */
     isAttributeAtomic : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a boolean value (true or false). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a boolean.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if boolean, false otherwise
+    */
     isAttributeBool : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is an array. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is an array.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if array, false otherwise
+    */
     isAttributeArray : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a Color object. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a color object.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if Color, false otherwise
+    */
     isAttributeColor : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a Transform object. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a Transform object.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if Transform, false otherwise
+    */
     isAttributeTransform : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a tuple of n-elements (commonly referred as Vector2, Vector3 etc). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a tuple.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if tuple, false otherwise
+    */
     isAttributeTuple : function(attrTypeId)
     {
         return 0;
     },
 
+    /**
+        Returns if the attribute for a given type ID is an enumerated value. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a enumeration.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if enumeration, false otherwise
+    */
     isAttributeEnum : function(attrTypeId)
     {
         return false;
     },
 
-    // Events
+    /**
+        Registers a callback for an 'entity created' event.<br>
+        The implementation of this method should internally subscribe to the 'entity created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     entityCreated : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'entity removed' event.<br>
+        The implementation of this method should internally subscribe to the 'entity removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     entityRemoved : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'component created' event.<br>
+        The implementation of this method should internally subscribe to the 'component created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     componentCreated : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'component removed' event.<br>
+        The implementation of this method should internally subscribe to the 'component removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     componentRemoved : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'attribute change' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute change' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     attributeChanged : function(context, callback) {},
 
     // Log channels
+    /**
+        Log info on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logInfo : function(text) {},
+    /**
+        Log warning on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logWarning : function(text) {},
+    /**
+        Log error on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logError : function(text) {}
 });
 
 
 var EntityWrapper = IWrapper.$extend(
+/** @lends EntityWrapper.prototype */
 {
+    /**
+        Wrapper interface for an entity object. 
+        The entity object should provide access to manipulating individual entities and its components.
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function(id, name, isLocal, isTemporary)
     {
         this.$super();
 
+        /**
+            Unique ID of the entity.
+            @type {number}
+            @default -1
+        */
         this.id = isNull(id) ? -1 : id;
+        /**
+            Entity name.
+            @type {string}
+            @default ""
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Local or replicated entity.
+            @type {boolean}
+            @default false
+        */
         this.local = isLocal;
+
+        /**
+            Temporary entity
+            @type {boolean}
+            @default false
+        */
         this.temporary = isTemporary;
     },
 
-    // virtual
+    /** 
+        Returns the parent ID of this entity, or null if not parented
+        @virtual
+        @return {?number} - The parent entity ID
+    */
     parentId : function()
     {
         return null;
     },
 
+    /** 
+        Checks if this entity is ancestor of `entityPtr`.<br>
+        @param {EntityWrapper} entityPtr The potential ancestor to be checked
+        @virtual
+        @return {boolean} - true if entity is ancestor of `entityPtr`, false otherwise
+    */
     isAncestorOf : function(entityPtr)
     {
         return false;
     },
 
-    // pure virtual
+    /** 
+        Serialize this entity into a JSON string.<br>
+        The implementation should take care of the serialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
+        @virtual
+        @return {string} - A stringified JSON from this entity
+    */
     serialize : function() {},
-    deserialize : function(jsonObject) {},
-    setName : function(name) {},
-    getName : function() {},
-    numberOfComponents : function() {},
-    components : function() {},
-    createComponent : function(typeName, name, isLocal) {},
-    hasComponent : function(type, name) {},
-    getComponent : function(type, name) {},
-    componentById : function(componentId) {},
-    removeComponent : function(componentId) {},
 
-    // Events
-    componentCreated : function(context, callback) {},
-    componentRemoved : function(context, callback) {}
+    /** 
+        Deserializes given JSON string to this entity.<br>
+        The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
+        @param {string} jsonObject The JSON string
+        @virtual
+    */
+    deserialize : function(jsonObject) {},
+
+    /** 
+        Sets the entity name.<br>
+        @param {string} name The desired name for this entity
+        @virtual
+    */
+    setName : function(name) {},
+
+    /** 
+        Returns the entity name.<br>
+        @return {string} - The current name for this entity
+        @virtual
+    */
+    getName : function() {},
+
+    /** 
+        Returns the number of components that this entity has.<br>
+        @return {number} - The number of components
+        @virtual
+    */
+    numberOfComponents : function() {},
+
+    /** 
+        Returns an array of all components that this entity has.<br>
+        @return {ComponentWrapper[]}
+        @virtual
+    */
+    components : function() {},
+
+    /** 
+        Creates a component and sets this entity as its parent.<br>
+        The implementation of this method should internally create a component to this entity.
+        @param {string} typeName The type name for this component.
+        @param {string} [name] The name for the component.
+        @param {boolean} [isLocal=false] Set to true if the component is to be created local only, meaning that it won't be sent to the server if synchronization is implemented.
+        @return {?ComponentWrapper} - The new created component, or null if creation fails
+        @virtual
+    */
+    createComponent : function(typeName, name, isLocal) {},
+
+    /** 
+        Checks if the component with given type and name exists.<br>
+        @param {string} type The type name for this component.
+        @param {string} [name] The name for the component.
+        @return {boolean} - 
+        @virtual
+    */
+    hasComponent : function(type, name) {},
+
+    /** 
+        Retrieve a component with given type and name.<br>
+        @param {string} type The type name for this component.
+        @param {string} [name] The name for the component.
+        @return {?ComponentWrapper} - The component, or null if not found
+        @virtual
+    */
+    getComponent : function(type, name) {},
+
+    /** 
+        Retrieve a component with given unique ID.<br>
+        @param {number} componentId The ID for the component.
+        @return {?ComponentWrapper} - The component, or null if not found
+        @virtual
+    */
+    componentById : function(componentId) {},
+
+    /** 
+        Remove a component with given unique ID.<br>
+        @param {number} componentId The ID for the component.
+        @virtual
+    */
+    removeComponent : function(componentId) {},
 });
 
 var ComponentWrapper = IWrapper.$extend(
+/** @lends ComponentWrapper.prototype */
 {
+    /**
+        Wrapper interface for a component object. 
+        The component object should provide access to manipulating component attributes and other options.
+        @constructs
+        @extends IWrapper
+    */
     __init__: function(id, name, type, parentId)
     {
         this.$super();
 
+        /**
+            Unique ID of the component
+            @type {number}
+            @default -1 
+        */
         this.id = isNull(id) ? -1 : id;
+
+        /**
+            Name of the component
+            @type {string}
+            @default "" 
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Type name of the component
+            @type {string}
+            @default "" 
+        */
         this.typeName = isNull(type) ? "" : type;
+
+        /**
+            Parent entity ID of the component
+            @type {number}
+        */
         this.pId = parentId;
     },
 
+    /** 
+        Returns this component's parent entity unique ID.<br>
+        @return {number} - The ID of the parent.
+        @virtual
+    */
     parentId : function()
     {
         return this.pId;
     },
 
+    /** 
+        Returns the component name.<br>
+        @return {string} - The current name for this component
+        @virtual
+    */
     getName : function()
     {
         return this.name;
     },
 
-    // pure virtual
+    /** 
+        Serialize this component into a JSON string.<br>
+        The implementation should take care of the serialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
+        @virtual
+        @return {string} - A stringified JSON from this component
+    */
     serialize : function() {},
+
+    /** 
+        Deserializes given JSON string to this component.<br>
+        The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
+        @param {string} jsonObject The JSON string
+        @virtual
+    */
     deserialize : function(jsonObject) {},
+
+    /** 
+        Returns if the component is dynamic, i.e. its attributes can be added / removed on demand.<br>
+        @return {boolean} - true if dynamic component, false otherwise
+        @virtual
+    */
     isDynamic : function() {},
+
+    /**
+        Mark this component a temporary. A temporary component will not be saved when saving the whole scene into a file
+        @param {boolean} temporary true if this component should be temporary, false othewise
+        @virtual
+    */
     setTemporary : function(temporary) {},
+
+    /**
+        Returns all attributes of this component
+        @return {AttributeWrapper[]}
+        @virtual
+    */
     attributes : function() {},
+
+    /**
+        If this component is dynamic, an attribute can be created by calling this function
+        @param {number} typeId The type ID of the attribute that should be created
+        @param {string} name A unique name for the new attribute
+        @return {boolean} - true if the attribute was successfully created, false if not or if component is not dynamic
+        @virtual
+    */
     createAttribute : function(typeId, name) {},
+
+    /**
+        Gets an attribute by name
+        @param {string} name The name for the attribute
+        @return {?AttributeWrapper} - The attribute, or null if not found
+        @virtual
+    */
     attributeByName : function(name) {},
+
+    /**
+        Gets an attribute by index
+        @param {number} index The index for the attribute
+        @return {?AttributeWrapper} - The attribute, or null if not found
+        @virtual
+    */
     getAttributeByIndex : function(index) {},
+
+    /**
+        Removes an attribute by index
+        @param {number} index The index for the attribute to be removed
+        @return {boolean} - true if the attribute was successfully removed, false if not or if component is not dynamic
+        @virtual
+    */
     removeAttribute : function(index) {},
 
+    /**
+        Registers a callback for an 'attribute added' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute added' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     onAttributeAdded : function(context, callback) {},
-    onAttributeChanged : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'attribute removed' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute removed' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     onAttributeAboutToBeRemoved : function(context, callback) {}
 
 });
 
 var AttributeWrapper = IWrapper.$extend(
+/** @lends AttributeWrapper.prototype */
 {
+    /**
+        Wrapper interface for an attribute object. 
+        The attribute object should provide access to manipulating values of attributes.
+        @param {number} index The index of this attribute. Index is the position where this attribute resides in the component
+        @param {number} typeId The type ID of the attribute
+        @param {string} name The name of the attribute
+        @param {ComponentWrapper} parent The parent component of this attribute
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function(index, typeId, name, parent)
     {
         this.$super();
 
+        /**
+            Type ID of the attribute
+            @type {number}
+        */
         this.typeId = typeId;
+
+        /**
+            Name of the attribute
+            @type {string}
+            @default ""
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Attribute index
+            @type {number}
+        */
         this.index = index;
+
+        /**
+            The component that owns the attribute
+            @type {ComponentWrapper}
+        */
         this.owner = parent;
     },
 
+    /**
+        Returns the valid values that this attribute can accept. The default implementation returns null<br>
+        The implementation of this method should check with the underlying system the allowed values for this attribute, and return them in an array.
+        @return {*} - values array of valid values. Can be any type
+    */
     validValues : function()
     {
         return null;
     },
 
-    // pure virtual
+    /**
+        Get the raw value of this attribute
+        @return {*} - The value of this attribute
+    */
     get : function() {},
+
+
+    /**
+        Sets the raw value of this attribute
+        @param {*} value The value to be set
+    */
     set : function(value) {}
 });
 
 var IEvent = Class.$extend(
+/** @lends IEvent.prototype */
 {
-    __classvars__ : 
-    {
-        MouseEvent : 0,
-        KeyEvent : 1,
-        ResizeEvent : 2
-    },
 
+    /** 
+        A wrapper for events. Any input event wrapper should inherit this class.
+        @param {number} eventType The event type, see the static members 
+        @param {number} [id] Unique ID for this event
+        @constructs
+    */
     __init__ : function(eventType, id)
     {
         this.eventType = eventType;
@@ -275,11 +855,43 @@ var IEvent = Class.$extend(
         this.targetId = "";
         this.targetNodeName = "";
         this.originalEvent = null;
+    },
+
+    __classvars__ : 
+    {
+        /**
+            Mouse event
+            @static
+            @type {number}
+            @default 0
+        */
+        MouseEvent : 0,
+        /**
+            Key event
+            @static
+            @type {number}
+            @default 1
+        */
+        KeyEvent : 1,
+        /**
+            Resize event
+            @static
+            @type {number}
+            @default 2
+        */
+        ResizeEvent : 2
     }
 });
 
 var KeyEventWrapper = IEvent.$extend(
+/** @lends KeyEventWrapper.prototype */
 {
+    /** 
+        A wrapper for key events. Any key event wrapper should inherit this class.
+        @param {number} [id] Unique ID for this event
+        @constructs
+        @extends IEvent
+    */
     __init__ : function(id)
     {
         this.$super(IEvent.KeyEvent, id);
@@ -291,6 +903,11 @@ var KeyEventWrapper = IEvent.$extend(
         this.pressed = {};
     },
 
+    /**
+        Returns if the given keyboard `key` is pressed
+        @param {string} key The key to be checked
+        @return {boolean} - true if the key is pressed
+    */
     isPressed : function(key)
     {
         if (isNotNull(this.pressed[key]))
@@ -301,7 +918,14 @@ var KeyEventWrapper = IEvent.$extend(
 });
 
 var MouseEventWrapper = IEvent.$extend(
+/** @lends MouseEventWrapper.prototype */
 {
+    /** 
+        A wrapper for mouse events. Any mouse event wrapper should inherit this class.
+        @param {number} [id] Unique ID for this event
+        @constructs
+        @extends IEvent
+    */
     __init__ : function(id)
     {
         this.$super(IEvent.MouseEvent, id);
@@ -321,31 +945,155 @@ var MouseEventWrapper = IEvent.$extend(
 });
 
 var RaycastResult = Class.$extend(
+/** @lends RaycastResult.prototype */
 {
+    /** 
+        A raycast result object.
+        @constructs
+    */
     __init__ : function()
     {
+        /** 
+            A pointer to the entity wrapper object that has been hit. Can be null
+            @var {?EntityWrapper}
+        */
         this.entity = null;
+
+        /** 
+            A pointer to the component wrapper object (for example a mesh, billboard etc) that has been hit. Can be null
+            @var {?ComponentWrapper}
+        */
         this.component = null;
+
+        /** 
+            A 3-tuple that represents the position of the location where it hit the entity.
+            @var {*}
+        */
         this.pos = null;
+
+        /** 
+            Distance from screen coordinates to the entity that has been hit by the raycasting.
+            @var {number}
+        */
         this.distance = -1;
+
+        /** 
+            Index of the submesh that has been hit by the raycasting.
+            @var {number}
+        */
         this.submesh = -1;
+
+        /** 
+            Face index that has been hit by the raycasting.
+            @var {number}
+        */
         this.faceIndex = -1;
+
+        /**
+            Pointer to the original ray used in the casting.
+            @var {*}
+        */
         this.ray = null;
     }
 });
 
+var ITransformEditor = Class.$extend(
+/** @lends ITransformEditor.prototype */
+{
+    /**
+        Base implementation of ITransformEditor.<br>
+        This implementation does nothing. Derived implementations should extend this class by adding their own functionality
+        @constructs
+    */
+    __init__ : function()
+    {
+
+    },
+
+    /**
+        Sets the target entity whose transform should be manipulated
+        @param {EntityWrapper} entityPtr The entity to be manipulated
+    */
+    setTargetEntity : function(entityPtr)
+    {
+
+    },
+
+    /**
+        Set the mode of transform. Usually values should be "translation", "rotate" and "scale" 
+        @param {string} mode 
+    */
+    setMode : function(mode)
+    {
+
+    },
+
+    /**
+        Clears the selection
+    */
+    clearSelection : function()
+    {
+
+    }
+});
+
 var IEditor = IWrapper.$extend(
+/** @lends IEditor.prototype */
 {
     __classvars__ : 
     {
-        scene : null, // 'Static' object to the scene
-        Instance : null // 'Static' object of the editor. Use with caution
+        /** An instance to the SceneWrapper-derived object
+            @static
+            @type {SceneWrapper}
+            @default null
+        */
+        scene : null,
+        Instance : null
     },
 
+    /**
+        Main entry point to the Interface Designer application.
+        Implements all necessary communication with the underlying system to display the current scene situation.<br>
+        In order to start the interface designer, an instance should be made of the implementation of this class. Make sure that all dependencies that your implementation and the interface designer uses are included before making the instance.<br>
+        Any custom option of your needs can be added to the `options` object, and subsequently handled in your own implementation.<br>
+        Be sure to call the base implementation of the editor in your derived class constructor, as shown in the example.
+        @example 
+        * var MyEditor = IEditor.$extend({
+        * {
+        *     __init__ : function(options)
+        *     {
+        *         // call the base implementation constructor
+        *         this.$super(options);
+        *         // your code here 
+        *     },
+        *     // ... derived methods etc.
+        * });
+
+        @constructs
+        @param {object} [options] Start-up options
+        @param {string} [options.type=""] Type name of the underlying system of your choice.
+        @param {string} [options.toggleEditorShortcut="shift+s"] The shortcut to enable the editor
+        @param {string} [options.switchPanelsShortcut="shift+e"] The shortcut to switch between scene tree and entity-component editor
+        @param {string} [options.noSelectionString="(No entities selected)"] The text shown in the EC editor title when no entities are selected
+        @extends IWrapper
+    */
     __init__ : function(options)
     {
         this.$super();
+
+        /** 
+            An instance to the IEditor-derived object. Use with caution.
+            @static
+            @type {SceneWrapper}
+            @default null
+        */
         IEditor.Instance = this;
+
+        /** 
+            Type of the underlying system as string
+            @type {string}
+            @default ""
+        */
         this.type = options.type || "";
 
         this.ui = {};                                       // JSON
@@ -354,6 +1102,11 @@ var IEditor = IWrapper.$extend(
         this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
         this.sceneEvents = [];
         this.componentEvents = [];                         // Array of EventWrapper
+
+        /**
+            Transform editor instance
+            @type TransformEditor
+        */
         this.transformEditor = null;
 
         this.accordionHistory = {};
@@ -365,7 +1118,16 @@ var IEditor = IWrapper.$extend(
         this.currentObject = null;
 
         this.initTransformEditor();
+
+        /**
+            Undo manager instance
+            @type UndoRedoManager
+        */
         this.undoStack = new UndoRedoManager();
+        /**
+            Toolkit manager instance
+            @type ToolkitManager
+        */
         this.toolkit = new ToolkitManager();
 
         this._initUi();
@@ -386,62 +1148,258 @@ var IEditor = IWrapper.$extend(
         this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
     },
 
+    /**
+        Returns if the editor is enabled 
+        @return {boolean} - true if enabled
+    */
     isEditorEnabled : function()
     {
         return this.enabled;
     },
 
-    /* virtual */ 
+    /**
+        Returns if there is a connection to a server 
+        @return {boolean} - true if connected
+        @virtual
+    */
     isConnected : function()
     {
         return true;
     },
 
+    /**
+        Returns the available screen width from browser 
+        @return {number}
+        @virtual
+    */
     width : function()
     {
         return -1;
     },
 
+    /**
+        Returns the available screen height from browser 
+        @return {number}
+        @virtual
+    */
     height : function()
     {
         return -1;
     },
 
+    /**
+        Returns if there is a taskbar in the underlying system, serves to calculate the editor panels height
+        @return {jQuery} - The element as jQuery, or null if does not exist
+        @virtual
+    */
     taskbar : function()
     {
         return null;
     },
 
-    /* pure virtual */
+    /**
+        Returns a container element if such is implemented in the underlying system
+        @virtual
+        @return {jQuery} - The container element
+    */
     container : function() {},
+
+    /**
+        Adds a widget / 2D UI to the browser, or container if such is implemented.
+        @virtual
+        @param {jQuery} element A jQuery element
+    */
     addWidget : function(element) {},
+
+    /**
+        Registers a {@link SceneWrapper}-derived object that will serve as the basis for scene manipulation through this editor.<br>
+        The implementations of this method should make an instance of their own {@link SceneWrapper} derived object, and return it.
+
+        @virtual
+        @return {SceneWrapper}
+    */
     registerSceneObject : function() {},
+
+    /**
+        Registers a callback for an event that is fired when the client is connected to a server (synchronization)
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
     registerClientConnectedCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a key event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
     registerKeyEventCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a mouse event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
     registerMouseEventCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a resize event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
     registerResizeEventCallback : function(context, callback) {},
 
+    /**
+        Adds an "entity create" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding an entity to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string[]} components An array of component type names
+        @param {string} [entityName] Name for the new entity
+        @virtual
+    */ 
     addEntityCommand : function(components, entityName) {},
+
+    /**
+        Adds an "entity remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing an entity from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {EntityWrapper} entityPtr The entity to be removed
+        @virtual
+    */ 
     removeEntityCommand : function(entityPtr) {},
+
+    /**
+        Adds a "component create" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {number} entityId The entity ID that this component should be created
+        @param {string} compType Component type name
+        @param {string} compName Component name
+        @param {boolean} isLocal Create local component
+        @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */ 
     addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
+
+    /**
+        Adds a "component remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing a component from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {ComponentWrapper} componentPtr The entity to be removed
+        @virtual
+    */ 
     removeComponentCommand : function(componentPtr) {},
+
+    /**
+        Adds an "attribute add" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {number} entityId The entity ID that this component should be created
+        @param {string} compType Component type name
+        @param {string} compName Component name
+        @param {boolean} isLocal Create local component
+        @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */ 
     addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
+
+    /**
+        Adds an "attribute remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing an attribute from the component, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {AttributeWrapper} attributePtr The attribute to be removed
+        @virtual
+    */ 
     removeAttributeCommand : function(attributePtr) {},
+
+    /**
+        Adds an "attribute change" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for changing the attribute's value, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {AttributeWrapper} attributePtr The attribute to be changed
+        @param {*} value The new value to be set
+        @virtual
+    */ 
     changeAttributeCommand : function(attributePtr, value) {},
 
+    /**
+        Saves the scene.<br>
+        Implementations should handle the saving of the scene according to the underlying system for serialization of the scene description 
+        @param {string} filename The desired filename without extension
+        @virtual
+    */ 
     save : function(filename) {},
 
+    /**
+        Loads a scene file from hard drive.<br>
+        Implementations should handle the saving of the scene according to the underlying system for deserialization of the scene description
+        @virtual
+        @param {File} fileObject Instance of File object
+    */
+    load : function(fileObject) {},
+    /**
+        Initializes the transform editor. Serves to manipulate position / rotation / scale of 3D objects.<br>
+        Implementations should make their own transform editors by extending {@link ITransformEditor} and all of its methods
+        @param {string} filename The desired filename without extension
+        @virtual
+    */ 
     initTransformEditor : function() {},
+
+    /**
+        Adds a "create primitive" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating the primitive, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string} type Type of primitive: "Ball", "Cube", "Cone", "Cyllinder"
+        @virtual
+    */
     createPrimitive : function(type) {},
+
+    /**
+        Adds a "create movable" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a movable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
     createMovable : function() {},
+
+    /**
+        Adds a "create drawable" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a drawable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
     createDrawable : function() {},
+
+    /**
+        Adds a "create script" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a script, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
     createScript : function() {},
 
+    /**
+        Shows the helper grid on the XZ plane.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
     showGrid : function() {},
+
+    /**
+        Hides the helper grid on the XZ plane.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
     hideGrid : function() {},
+
+    /**
+        Shows the helper axes, with start at the 0,0,0 position.<br>
+        Implementations of this method should handle the creation of the axes in the underlying system renderer
+    */
     showAxes : function() {},
+
+    /**
+        Hides the helper axes.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
     hideAxes : function() {},
 
+    /**
+        Quickly creates an entity with given type. Adds a command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a movable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string} type Type of entity: "Drawable", "Movable", "Script"
+        @virtual
+    */
     quickCreateEntity : function(type)
     {
         if (isNull(type))
@@ -1116,12 +2074,19 @@ var IEditor = IWrapper.$extend(
             $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
     },
 
+    /** 
+        Toggles the editor on or off
+    */
     toggleEditor : function()
     {
         this.enabled = !this.enabled;
         this.setEnabled(this.enabled);
     },
 
+    /**
+        Set the editor enabled or disabled
+        @param {boolean} enabled true to enable the editor, false to disable it
+    */
     setEnabled : function(enabled)
     {
         if (enabled)
@@ -1155,11 +2120,19 @@ var IEditor = IWrapper.$extend(
             this.initTransformEditor();
     },
 
+    /**
+        Toggles the panels
+    */
     togglePanels : function()
     {
         if (this.isEditorEnabled())
             this.switchPanels(!this.isECEditor);
     },
+
+    /**
+        Switch the desired panel
+        @param {boolean} ecPanel true to switch to ecPanel, false to switch to scene tree panel
+    */
 
     switchPanels : function(ecPanel)
     {
@@ -1179,6 +2152,12 @@ var IEditor = IWrapper.$extend(
         this.toolkit.onPanelsSwitch(this.isECEditor);
     },
 
+    /**
+        Select an entity to be edited in the EC editor.<br>
+        If an active component is provided, then that component will be expanded
+        @param {EntityWrapper} entityPtr The entity to be edited
+        @param {ComponentWrapper} [activeComponent] The component to be expanded
+    */
     selectEntity : function(entityPtr, activeComponent)
     {
         if (isNotNull(this.currentObject))
@@ -1221,12 +2200,19 @@ var IEditor = IWrapper.$extend(
         this.toolkit.onEntitySelected(entityPtr);
     },
 
+    /**
+        Sets the mode of the transform editor
+        @param {string} mode The transform mode, can be "translate", "rotate", "scale"
+    */
     setTransformMode : function(mode)
     {
         if (this.transformEditor)
             this.transformEditor.setMode(mode);
     },
 
+    /** 
+        Creates a "remove entity" command on the currently edited object.
+    */
     removeCurrent : function()
     {
         if (isNotNull(this.currentObject))
@@ -2271,19 +3257,66 @@ var IEditor = IWrapper.$extend(
 });
 
 var ICommand = Class.$extend(
+/** @lends ICommand.prototype */
 {
+    /**
+        Base implemetation for undo / redo commands. A command can be executed and reversed (undone), so that the state of the observing workspace will return to the state before said command was executed.<br>
+        Any changes that it does should be independent of other commands, and should be able to switch between execution and undoing multiple times in order.<br>
+        Derived implementations should extend this class and its methods for their own implementation.
+        @param {string} commandString A string that describes what the comand does in human-readable sentences
+        @constructs
+        @see {@link UndoRedoManager}
+    */
     __init__ : function(commandString)
     {
         this.commandId = -1;
         this.commandString = commandString;
     },
 
+    /**
+        Execute this command.
+    */
     exec : function() {},
+    /**
+        Undo this command.
+    */
     undo : function() {}
 });
 
 var UndoRedoManager = Class.$extend(
+/** @lends UndoRedoManager.prototype */
 {
+    /**
+        The UndoRedoManager manages the history of states on the observing workspace.<br>
+        It maintains the history stack of commands that have been executed and / or undone.
+        @param {number} numberOfItems Number of commands that the undo stack will maintain.
+        @constructs
+        @see {@link ICommand}
+        @example
+        * var IncrementCommand = ICommand.$extend({
+        *     __init__ : function(someObject)
+        *     {
+        *         this.someObject = someObject;
+        *     },
+        *
+        *     exec : function()
+        *     {
+        *         this.someObject.i +=1;
+        *     },
+        *
+        *     undo : function()
+        *     {
+        *         this.someObject.i -= 1;
+        *     },
+        * });
+        * 
+        * var undoManager = new UndoRedoManager();
+        * var myObject = { i:0 };
+        * var newIncrementCommand = new IncrementCommand(myObject);
+        * undoManager.pushAndExec(newIncrementCommand); // myObject.i == 1;
+        * undoManager.undo();                           // myObject.i == 0;
+        * undoManager.redo();                           // myObject.i == 1;
+    */
     __init__ : function(numberOfItems)
     {
         this._numberOfItems = 50;
@@ -2298,15 +3331,30 @@ var UndoRedoManager = Class.$extend(
         this._redoHistory = [];
     },
 
+    /**
+        Checks if undo can be executed on this manager
+        @return {boolean} - true if undo can be executed
+    */
     canUndo : function()
     {
         return (this._undoHistory.length !== 0);
     },
 
+    /**
+        Checks if redo can be executed on this manager
+        @return {boolean} - true if redo can be executed
+    */
     canRedo : function()
     {
         return (this._redoHistory.length !== 0);
     },
+
+    /**
+        Returns the undo history in an array. <br>
+        It stores it as an array of objects with two properties: `id` and `commandString`. The `id` is the index of the command in the undo stack at the time of retrieving the history, while `commandString` is the command string in human-readable format.
+
+        @return {object[]} - The undo history represented as objects with properties `id` and `commandString`
+    */
 
     undoHistory : function()
     {
@@ -2323,6 +3371,12 @@ var UndoRedoManager = Class.$extend(
         return result;
     },
 
+    /**
+        Returns the redo history in an array. <br>
+        It stores it as an array of objects with two properties: `id` and `commandString`. The `id` is the index of the command in the undo stack at the time of retrieving the history, while `commandString` is the command string in human-readable format.
+
+        @return {object[]} - The redo history represented as objects with properties `id` and `commandString`
+    */
     redoHistory : function()
     {
         var result = [];
@@ -2341,6 +3395,12 @@ var UndoRedoManager = Class.$extend(
         return result;
     },
 
+    /**
+        Registers a callback for 'stateChanged' event.<br>
+        The stateChanged event is fired every time the history is changed. For example, every time a command has been added to the stack, or a command has been undone.
+        @param {object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the history is changed
+    */
     stateChanged : function(context, callback)
     {
         this.stateChangedCallbacks.push({
@@ -2365,6 +3425,12 @@ var UndoRedoManager = Class.$extend(
         }
     },
 
+    /**
+        Push a new command to the stack.<br>
+        Note: This method only adds the command to the stack, meaning you have to execute the command manually.
+        @param {ICommand} command The command to be pushed
+        @see {@link UndoRedoManager#pushAndExec}
+    */
     pushCommand : function(command)
     {
         this._redoHistory.length = 0;
@@ -2376,12 +3442,22 @@ var UndoRedoManager = Class.$extend(
         this._onStateChanged();
     },
 
+    /**
+        Push a new command to the stack, and executes it immediately.<br>
+        @param {ICommand} command The command to be pushed and executed
+        @see {@link UndoRedoManager#pushCommand}
+    */
     pushAndExec : function(command)
     {
         this.pushCommand(command);
         command.exec();
     },
 
+    /**
+        Execute undo.<br>
+        Removes the most recent command executed from the undo stack, calls 'undo' on it, and pushes it in the redo stack.
+        @param {boolean} [disconnected=false] Set this to true if the 'stateChanged' event should not be fired
+    */ 
     undo : function(disconnected)
     {
         if (!this.canUndo())
@@ -2398,6 +3474,11 @@ var UndoRedoManager = Class.$extend(
             this._onStateChanged();
     },
 
+    /**
+        Execute redo.<br>
+        Removes the most recent undone command from the redo stack, calls 'exec' on it, and pushes it in the undo stack.
+        @param {boolean} [disconnected=false] Set this to true if the 'stateChanged' event should not be fired
+    */
     redo : function(disconnected)
     {
         if (!this.canRedo())
@@ -2414,6 +3495,11 @@ var UndoRedoManager = Class.$extend(
             this._onStateChanged();
     },
 
+    /**
+        Executes 'undo' or 'redo' multiple times until it reaches the state given through 'commandId' parameter.<br>
+        The 'stateChanged' event fires only once, when it gets to the desired state.
+        @param {number} commandId The state to be set
+    */
     goToState : function(commandId)
     {
         if (commandId < 0)
@@ -2436,6 +3522,9 @@ var UndoRedoManager = Class.$extend(
         this._onStateChanged();
     },
 
+    /**
+        Clears the history, all commands are deleted irreversibly, and fires the 'stateChanged' event in the end.
+    */
     clear : function()
     {
         this._undoHistory.length = 0;
@@ -2446,7 +3535,13 @@ var UndoRedoManager = Class.$extend(
 });
 
 var ToolkitManager = Class.$extend(
+/** @lends ToolkitManager.prototype */
 {
+    /**
+        Toolkit manager. Provides the UI for the toolbar, tightly connected with the main editor instance.<br>
+        Do not create instances of the ToolkitManager, instead use {@link IEditor#toolkit}.
+        @constructs
+    */
     __init__ : function()
     {
         this.toolbar = null;
@@ -2574,6 +3669,21 @@ var ToolkitManager = Class.$extend(
             text : false,
             icons : {
                 primary : "ui-icon-disk"
+            }
+        });
+
+        this.ui.loadButton = $("<button/>", {
+            id : "_toolkit-loadButton",
+            title : "Load"
+        });
+        this.ui.loadButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.loadButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-folder-open"
             }
         });
 
@@ -2786,6 +3896,7 @@ var ToolkitManager = Class.$extend(
             this.toolbar.append(this.ui.undoButtonSet);
             this.toolbar.append(this.ui.redoButtonSet);
             this.toolbar.append(this.ui.saveButton);
+            this.toolbar.append(this.ui.loadButton);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
             this.toolbar.append(this.ui.createButton);
             this.toolbar.append(this.ui.quickAddButton);
@@ -2841,6 +3952,35 @@ var ToolkitManager = Class.$extend(
             dialog.addButtons(buttons);
             dialog.exec();
         });
+
+        this.ui.loadButton.click(function(){
+            var dialog = new ModalDialog("LoadScene", "Load previously saved scene", 450, 100);
+            dialog.appendInputBox("loadSceneInput", "Load file or something", "file");
+            var buttons = {
+                "Ok" : function()
+                {
+                    var input = $("#loadSceneInput");
+                    var filename = input.val();
+
+                    if (isNull(filename) || filename === "")
+                    {
+                        input.addClass(Utils.invalidDataName);
+                        return;
+                    }
+
+                    IEditor.Instance.load(input[0].files[0]);                    
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            };
+            dialog.addButtons(buttons);
+            dialog.exec();
+        })
 
         this.ui.undoArrowButton.click(function(){
             $(".ui-menu").hide();
@@ -3207,11 +4347,17 @@ var ToolkitManager = Class.$extend(
         this.ui.panelsButtonSet.buttonset("refresh");
     },
 
+    /**
+        Shows the toolbar.
+    */
     show : function()
     {
         this.toolbar.show();
     },
 
+    /**
+        Hides the toolbar.
+    */
     hide : function()
     {
         this.toolbar.hide();

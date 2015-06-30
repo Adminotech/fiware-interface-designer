@@ -712,7 +712,7 @@ var RocketEntity = EntityWrapper.$extend(
 
         this.callbacks = {};
 
-        entityPtr.InterfaceDesignerWrapper = this;
+        // entityPtr.InterfaceDesignerWrapper = this;
     },
 
     setName : function(name)
@@ -821,34 +821,6 @@ var RocketEntity = EntityWrapper.$extend(
                 componentPtr.deserialize(component);
         }
     },
-
-    onComponentCreated : function(context, callback)
-    {
-        this.registerCallback("onComponentCreated", context, callback);
-        return this._ptr.onComponentCreated(this, this._onComponentCreated);
-    },
-
-    onComponentRemoved : function(context, callback)
-    {
-        this.registerCallback("onComponentRemoved", context, callback);
-        return this._ptr.onComponentRemoved(this, this._onComponentRemoved);
-    },
-
-    _onComponentCreated : function(entity, component)
-    {
-        var entityPtr = __(RocketEntity, entity);
-        var componentPtr = __(RocketComponent, component);
-
-        this.callback("onComponentCreated", entityPtr, componentPtr);
-    },
-
-    _onComponentRemoved : function(entity, component)
-    {
-        var entityPtr = __(RocketEntity, entity);
-        var componentPtr = __(RocketComponent, component);
-
-        this.callback("onComponentRemoved", entityPtr, componentPtr);
-    }
 });
 
 var RocketComponent = ComponentWrapper.$extend(
@@ -860,7 +832,7 @@ var RocketComponent = ComponentWrapper.$extend(
 
         this.callbacks = {};
 
-        componentPtr.InterfaceDesignerWrapper = this;
+        // componentPtr.InterfaceDesignerWrapper = this;
     },
 
     isDynamic : function()
@@ -982,15 +954,6 @@ var RocketComponent = ComponentWrapper.$extend(
         return this._ptr.onAttributeAdded(this, this._onAttributeAdded);
     },
 
-    onAttributeChanged : function(context, callback)
-    {
-        if (this.expired())
-            return;
-
-        this.registerCallback("onAttributeChanged", context, callback);
-        return this._ptr.onAttributeChanged(this, this._onAttributeChanged);
-    },
-
     onAttributeAboutToBeRemoved : function(context, callback)
     {
         if (this.expired())
@@ -1009,14 +972,6 @@ var RocketComponent = ComponentWrapper.$extend(
         var attributePtr = __(RocketAttribute, attribute, componentPtr);
 
         this.callback("onAttributeAdded", componentPtr, attributePtr);
-    },
-
-    _onAttributeChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
-    {
-        var entityPtr = __(RocketEntity, entity);
-        var componentPtr = __(RocketComponent, component);
-
-        this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
     },
 
     _onAttributeAboutToBeRemoved : function(component, attributeIndex, attributeName)
@@ -1040,7 +995,7 @@ var RocketAttribute = AttributeWrapper.$extend(
         this.$super(attributePtr.index, attributePtr.typeId, attributePtr.name, parent);
         this._ptr = attributePtr;
 
-        attributePtr.InterfaceDesignerWrapper = this;
+        // attributePtr.InterfaceDesignerWrapper = this;
     },
 
     get : function()
@@ -1318,12 +1273,25 @@ var RocketEditor = IEditor.$extend(
         var blob = new Blob([vkbeautify.xml(sceneTxmlString)], {type: "text/xml;charset=utf-8"});
         saveAs(blob, filename + ".txml");
     },
+
+    load : function(fileObject)
+    {
+        var reader = new FileReader();
+        reader.addEventListener("loadend", function(e)
+        {
+            var txt = e.target.result;
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(txt, "text/xml");
+        });
+        reader.readAsText(fileObject);
+    }
 });
 
-var TransformEditor = Class.$extend(
+var TransformEditor = ITransformEditor.$extend(
 {
    __init__ : function()
     {
+        this.$super();
         var camera = Tundra.renderer.camera;
         var domElement = Tundra.renderer.renderer.domElement;
 

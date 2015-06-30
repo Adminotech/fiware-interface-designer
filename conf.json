@@ -1,0 +1,28 @@
+{
+    "opts" : {
+        "template" : "../../node_modules/jaguarjs-jsdoc"
+    },
+    "tags": {
+        "allowUnknownTags": true,
+        "dictionaries": ["jsdoc","closure"]
+    },
+    "source": {
+        "include" : ["InterfaceDesigner-main.js"]
+    },
+    "templates": {
+        "cleverLinks": false,
+        "monospaceLinks": true,
+        "default" : {
+            "includeDate" : false,
+            "outputSourceFiles": false,
+            "outputSourcePath" : false
+        },
+        "applicationName": "Interface Designer",
+        "meta": {
+            "title": "Interface Designer",
+            "description": "Interface Designer GE API documentation",
+            "keyword": "api docs doxygen"
+        },
+        "linenums" : false
+    }
+}

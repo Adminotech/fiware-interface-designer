@@ -521,16 +521,6 @@ var XML3DScene = SceneWrapper.$extend(
         return result;
     },
 
-    componentNameWithPrefix : function(componentName)
-    {
-        return componentName;
-    },
-
-    componentNameInHumanFormat : function(typeName)
-    {
-        return typeName;
-    },
-
     isAttributeAtomic : function(attrTypeId)
     {
         return (attrTypeId === XML3DAttribute.String ||
@@ -790,7 +780,6 @@ var XML3DElement = EntityWrapper.$extend(
 
         this.$super(id, name, false, false);
         this._ptr = entityPtr;
-        entityPtr.InterfaceDesignerWrapper = this;
     },
 
     parentId : function()
@@ -1519,6 +1508,20 @@ var XML3DEditor = IEditor.$extend(
         saveAs(blob, filename + ".xml");
     },
 
+    load : function(fileObject)
+    {
+        var reader = new FileReader();
+        reader.addEventListener("loadend", function(e)
+        {
+            var txt = e.target.result;
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(txt, "text/xml");
+            xmlDoc.replaceChild(IEditor.scene.canvasDOM, xmlDoc.firstChild);
+        });
+
+        reader.readAsText(fileObject);
+    },
+
     onKeyEvent : function(keyEvent)
     {
         this.callback("onKeyEvent", new XML3DKeyEvent(keyEvent));
@@ -1535,10 +1538,11 @@ var XML3DEditor = IEditor.$extend(
     }
 });
 
-var TransformEditor = Class.$extend(
+var TransformEditor = ITransformEditor.$extend(
 {
     __init__ : function()
     {
+        this.$super();
         this.gizmo = null;
         this.targetTransform = null;
         this.mode = "translate";
