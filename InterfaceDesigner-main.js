@@ -2002,7 +2002,6 @@ var IEditor = IWrapper.$extend(
             if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
                 this.selectEntity(null);
         }
-
         this.removeTreeItem(entityPtr);
     },
 
@@ -2538,8 +2537,8 @@ var IEditor = IWrapper.$extend(
             setActive = false;
         if (isNull(canBeRemoved))
             canBeRemoved = true;
-
         var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
+
         var accordionId = "accordion-" + entAndCompSuffix;
         var accordion = $("<div/>", {
             id : accordionId
@@ -3955,7 +3954,7 @@ var ToolkitManager = Class.$extend(
 
         this.ui.loadButton.click(function(){
             var dialog = new ModalDialog("LoadScene", "Load previously saved scene", 450, 100);
-            dialog.appendInputBox("loadSceneInput", "Load file or something", "file");
+            dialog.appendInputBox("loadSceneInput", "Select the file by clicking on 'Choose file'. <br> <br> <strong>WARNING: Loading a scene will reset the scene and the editor, irreversibly removing everything! Save your changes before continuing!</strong><br><br>", "file");
             var buttons = {
                 "Ok" : function()
                 {

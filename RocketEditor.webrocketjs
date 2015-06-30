@@ -1282,6 +1282,7 @@ var RocketEditor = IEditor.$extend(
             var txt = e.target.result;
             var parser = new DOMParser();
             var xmlDoc = parser.parseFromString(txt, "text/xml");
+            Tundra.scene.deserializeFromXml(xmlDoc);
         });
         reader.readAsText(fileObject);
     }

@@ -1,6 +1,9 @@
 function getParentGroup(childNode)
 {
-    return childNode.parentNode;
+    if (childNode)
+        return childNode.parentElement;
+    else
+        return null;
 }
 
 function getChildrenGroups(parentNode)
@@ -474,8 +477,21 @@ var XML3DScene = SceneWrapper.$extend(
     removeEntity : function(entityId)
     {
         var result = XML3DScene.elementById(this.canvas, entityId);
+
         if (isNotNull(result))
+        {
+            this.removeNode(result);
             result.parentNode.removeChild(result);
+        }
+    },
+
+    reset : function()
+    {
+        var elements = this.entities();
+        for (var i = 0; i < elements.length; ++i)
+            this.removeEntity(elements[i].id);
+
+        XML3DScene.freeId = 1;
     },
 
     registeredComponents : function(typeName)
@@ -588,8 +604,8 @@ var XML3DScene = SceneWrapper.$extend(
             {
                 if (mutations[i].addedNodes.length != 0)
                     this.onAddedNodes(mutations[i]);
-                else if (mutations[i].removedNodes.length != 0)
-                    this.onRemovedNodes(mutations[i]);
+                // else if (mutations[i].removedNodes.length != 0)
+                //     this.onRemovedNodes(mutations[i]);
             }
         }
     },
@@ -630,16 +646,27 @@ var XML3DScene = SceneWrapper.$extend(
                 return;
             }
 
-            var parentNode = getParentGroup(node);
+            this.removeNode(node);
+        }
+    },
 
-            if (isNull(parentNode))
+    removeNode : function(node)
+    {
+        var parentNode = getParentGroup(node);
+
+        if (isNull(parentNode))
+        {
+            this._onEntityRemoved(node);
+        }
+        else
+        {
+            if (parentNode === this.canvasDOM)
+            {
                 this._onEntityRemoved(node);
+            }
             else
             {
-                if (parentNode === this.canvasDOM)
-                    this._onEntityRemoved(node);
-                else
-                    this._onComponentRemoved(parentNode, node);
+                this._onComponentRemoved(parentNode, node);
             }
         }
     },
@@ -729,6 +756,9 @@ var XML3DScene = SceneWrapper.$extend(
     {
         var componentNode = node.parentNode;
         var parentGroup = getParentGroup(componentNode);
+
+        if (isNull(componentNode) || isNull(parentGroup))
+            return;
 
         var entityPtr = null;
         var componentPtr = __(XML3DElement, componentNode);
@@ -1516,7 +1546,29 @@ var XML3DEditor = IEditor.$extend(
             var txt = e.target.result;
             var parser = new DOMParser();
             var xmlDoc = parser.parseFromString(txt, "text/xml");
-            xmlDoc.replaceChild(IEditor.scene.canvasDOM, xmlDoc.firstChild);
+
+            if (xmlDoc.getElementsByTagName("parsererror").length > 0)
+            {
+                IEditor.scene.logError("Error on loading a scene from a file: the file is not a valid XML file");
+                return;
+            }
+
+            IEditor.Instance.setEnabled(false);
+            IEditor.scene.reset();
+            var currentCanvas = IEditor.scene.canvasDOM;
+            var children = xmlDoc.firstChild.childNodes;
+            for (var i = 0; i < children.length; ++i)
+            {
+                if (children[i].nodeName == "#text")
+                    continue;
+
+                var clone = children[i].cloneNode(true);
+                currentCanvas.appendChild(clone);
+            }
+            delete IEditor.scene;
+            IEditor.scene = IEditor.Instance.registerSceneObject();
+            IEditor.Instance.setEnabled(true);
+
         });
 
         reader.readAsText(fileObject);
