@@ -8,8 +8,8 @@ define([
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
-        "meshmoon-applications/src/editor/InterfaceDesigner-main",
-        "meshmoon-applications/src/editor/lib/jquery.ui-contextmenu.min"
+        "application/editor/InterfaceDesigner-main",
+        "application/editor/lib/jquery.ui-contextmenu.min"
     ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor, _jquicm) {
 
 var AddEntityCommand = ICommand.$extend(
@@ -1082,7 +1082,7 @@ var RocketEditor = IEditor.$extend(
     {
         this.$super("rocket");
 
-        $("head").append('<link rel="stylesheet" href="../src/meshmoon-applications/src/editor/lib/skin-win8/ui.fancytree.css">');
+        $("head").append('<link rel="stylesheet" href="../src/application/editor/lib/skin-win8/ui.fancytree.css">');
 
         this.meshRefs = {
             "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
