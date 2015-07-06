@@ -1120,6 +1120,12 @@ var IEditor = IWrapper.$extend(
 
         this.initTransformEditor();
 
+        this.fontConfig = $.extend({}, this.defaultFontConfig());
+        this.fontConfigMonospaceConfig = $.extend({
+            "font-family" : '"Courier New", monospace',
+            "font-size"   : "13px",
+        }, this.defaultMonospaceFontConfig());
+
         /**
             Undo manager instance
             @type UndoRedoManager
@@ -1129,7 +1135,7 @@ var IEditor = IWrapper.$extend(
             Toolkit manager instance
             @type ToolkitManager
         */
-        this.toolkit = new ToolkitManager();
+        this.toolkit = new ToolkitManager(this.fontConfig);
 
         this._initUi();
         this.toolkit.initUi(isNotNull(this.transformEditor));
@@ -1147,6 +1153,26 @@ var IEditor = IWrapper.$extend(
         IEditor.scene = this.registerSceneObject();
 
         this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
+    },
+
+    /**
+        Provides default font config object.
+        @return {Object}
+        @virtual
+    */
+    defaultFontConfig : function()
+    {
+        return {};
+    },
+
+    /**
+        Provides default font config object.
+        @return {Object}
+        @virtual
+    */
+    defaultMonospaceFontConfig : function()
+    {
+        return {};
     },
 
     /**
@@ -1423,7 +1449,7 @@ var IEditor = IWrapper.$extend(
         invalidDataClass.text(".invalidData { border : 2px solid red; }");
 
         var menuItemsClass = $("<style/>");
-        menuItemsClass.text(".contextmenu-z { z-index: 5; }");
+        menuItemsClass.text(".contextmenu-z { z-index: 5; font-size: 14px; }");
 
         var accordionStyle = $("<style/>"); // #F7EEDC
         accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
@@ -1434,6 +1460,13 @@ var IEditor = IWrapper.$extend(
         #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
         #_toolkit-undoStackButtons li { margin: 3px; padding: 0.4em; font-size: 1.4em; height: 18px; } ";
 
+        var monoSpaceFlat = "";
+        for (var prop in this.fontConfigMonospaceConfig)
+            monoSpaceFlat += prop + ": " + this.fontConfigMonospaceConfig[prop] + ";"
+
+        var treeStyle= ".fancytree-node { " + monoSpaceFlat + "}" +
+                       ".fancytree-focused { font-weight: bold; }";
+
         var undoStyleElem = $("<style/>");
         undoStyleElem.append(undoListStyle);
 
@@ -1441,7 +1474,7 @@ var IEditor = IWrapper.$extend(
         $("head").append(menuItemsClass);
         $("head").append(accordionStyle);
         $("head").append(undoStyleElem);
-        $("body").css("font-size", "12px");
+        $("head").append($("<style/>").append(treeStyle));
 
         this.panelWidth = 420;
         this.panelHeight = this.height();
@@ -1466,8 +1499,6 @@ var IEditor = IWrapper.$extend(
             "border"            : 0,
             "border-left"       : "1px solid gray",
             "overflow"          : "auto",
-            "font-family"       : "Courier New",
-            "font-size"         : "10pt",
             "color"             : "rgb(50,50,50)",
             "background-color"  : "rgba(248,248,248, 0.5)",
         });
@@ -1499,8 +1530,8 @@ var IEditor = IWrapper.$extend(
             "position" : "relative",
             "font-size" : "10px",
             "min-width": "50%"
-        });
-        this.ui.sceneTree.addEntityButton.html("Add new entity...");
+        }).css(this.fontConfig);
+        this.ui.sceneTree.addEntityButton.html("Create Entity...");
         this.ui.sceneTree.addEntityButton.button({
             icons : {
                 primary : "ui-icon-plusthick"
@@ -1515,8 +1546,8 @@ var IEditor = IWrapper.$extend(
             "position" : "relative",
             "font-size" : "10px",
             "min-width": "49%"
-        });
-        this.ui.sceneTree.expColButton.html("Expand/Collapse");
+        }).css(this.fontConfig);
+        this.ui.sceneTree.expColButton.html("Expand / Collapse");
         this.ui.sceneTree.expColButton.button({
             icons : {
                 primary : "ui-icon-carat-2-n-s"
@@ -1553,14 +1584,14 @@ var IEditor = IWrapper.$extend(
             "left" : 10,
             "width" : "94%",
             "height" : "20px",
+            "color" : "white",
             "font-family" : "Verdana",
             "font-size" : "16px",
             "text-align" : "center",
-            "border" : "2px dashed #a1a1a1",
-            "padding" : "5px 0 5px 0",
+            "border" : 3,
+            "padding" : "10px 0px",
             "margin" : "0 0 10px 0",
-            "background" : "#DDDDDD",
-            "border-radius" : "10px"
+            "background" : "steelblue"
         });
         this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
 
@@ -1587,10 +1618,10 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.addCompButton.css({
             "position" : "relative",
             // "margin-left" : 10,
-            "font-size" : "10px",
-            "min-width": "32%"
-        });
-        this.ui.ecEditor.addCompButton.html("Add new component...");
+            "font-size" : "11px",
+            "width": "100%"
+        }).css(this.fontConfig);
+        this.ui.ecEditor.addCompButton.html("Create Component...");
         this.ui.ecEditor.addCompButton.button({
             icons : {
                 primary : "ui-icon-plusthick"
@@ -1603,10 +1634,10 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.expColButton.data("toggle", false);
         this.ui.ecEditor.expColButton.css({
             "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "32%"
-        });
-        this.ui.ecEditor.expColButton.html("Expand/Collapse");
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
+        this.ui.ecEditor.expColButton.html("Expand / Collapse");
         this.ui.ecEditor.expColButton.button({
             icons : {
                 primary : "ui-icon-carat-2-n-s"
@@ -1619,9 +1650,9 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.editCompButton.data("toggle", false);
         this.ui.ecEditor.editCompButton.css({
             "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "30%"
-        });
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
         this.ui.ecEditor.editCompButton.html("Edit...");
         this.ui.ecEditor.editCompButton.button({
             icons : {
@@ -1634,7 +1665,7 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.buttonsHolder.attr("id", "editor-buttons");
         this.ui.ecEditor.buttonsHolder.css({
             "position" : "relative",
-            "overflow" : "auto",
+            "overflow" : "hidden",
             "top" : 5,
             "left" : 10,
             "width" : "95%",
@@ -1786,38 +1817,44 @@ var IEditor = IWrapper.$extend(
         if (isNotNull(taskbar))
         {
             if (this.ui.sceneTree.panel.is(":visible"))
+            {
                 this.ui.sceneTree.panel.position(
                 {
                     my : "right bottom",
                     at : "right top",
                     of : taskbar
                 });
-
+            }
             if (this.ui.ecEditor.panel.is(":visible"))
+            {
                 this.ui.ecEditor.panel.position(
                 {
                     my : "right bottom",
                     at : "right top",
                     of : taskbar
                 });
+            }
         }
         else if (isNotNull(container))
         {
             if (this.ui.sceneTree.panel.is(":visible"))
+            {
                 this.ui.sceneTree.panel.position(
                 {
                     my : "right top",
                     at : "right top",
                     of : container
                 });
-
+            }
             if (this.ui.ecEditor.panel.is(":visible"))
+            {
                 this.ui.ecEditor.panel.position(
                 {
                     my : "right top",
                     at : "right top",
                     of : container
                 });
+            }
         }
 
         this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
@@ -2232,6 +2269,7 @@ var IEditor = IWrapper.$extend(
     {
         this.ui.sceneTree.holder.contextmenu({
             addClass: "contextmenu-z",
+            css : { color: "red" },
             delegate: "span.fancytree-node",
             menu: [
                 {title: "Edit", cmd: "edit", uiIcon: "ui-icon-pencil"},
@@ -3555,12 +3593,13 @@ var ToolkitManager = Class.$extend(
         Do not create instances of the ToolkitManager, instead use {@link IEditor#toolkit}.
         @constructs
     */
-    __init__ : function()
+    __init__ : function(fontConfig)
     {
         this.toolbar = null;
         this.undoMenu = null;
         this.redoMenu = null;
         this.ui = {};
+        this.fontConfig = fontConfig || {};
     },
 
     initUi : function(gizmoAvailable)
@@ -3836,23 +3875,29 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.css({
                 "height" : "22px",
                 "font-size" : "10px",
-                "float" : "right"
+                "float" : "right",
+                "margin-top": -3
             });
 
             var labelTranslate = $("<label/>", {
                 "for" : "_toolkit-radioTranslate"
-            });
+            }).css(this.fontConfig);
             labelTranslate.text("Translate");
 
             var labelRotate = $("<label/>", {
                 "for" : "_toolkit-radioRotate"
-            });
+            }).css(this.fontConfig);
             labelRotate.text("Rotate");
 
             var labelScale = $("<label/>", {
                 "for" : "_toolkit-radioScale"
-            });
+            }).css(this.fontConfig);
             labelScale.text("Scale");
+
+
+            labelTranslate.css({ "font-size" : 13, border : "1px solid #009688" });
+            labelRotate.css({ "font-size" : 13, border : "1px solid #009688" });
+            labelScale.css({ "font-size" : 13, border : "1px solid #009688" });
 
             this.ui.transformButtonSet.append(this.ui.translateButton);
             this.ui.transformButtonSet.append(labelTranslate);
@@ -3882,21 +3927,25 @@ var ToolkitManager = Class.$extend(
         this.ui.panelsButtonSet = $("<div/>", {
             id : "_toolkit-panelsButtonSet"
         });
-        this.ui.panelsButtonSet.css({
-            "height" : "22px",
-            "font-size" : "10px",
-            "float" : "right"
+        this.ui.panelsButtonSet.css(this.fontConfig).css({
+            "float"      : "right",
+            "height"     : 22,
+            "font-size"  : 11,
+            "margin-top" : -3
         });
 
         var labelSceneTree = $("<label/>", {
             "for" : "_toolkit-sceneTreeButton"
         });
-        labelSceneTree.text("Scene tree");
+        labelSceneTree.text("Scene tree").css(this.fontConfig).css({ "font-size" : 13 } );
 
         var labelECEditor = $("<label/>", {
             "for" : "_toolkit-ecEditorButton"
         });
-        labelECEditor.text("EC editor");
+        labelECEditor.text("EC editor").css(this.fontConfig).css({ "font-size" : 13 } );
+
+        labelSceneTree.css({ "font-size" : 13, border : "1px solid #1976D2" });
+        labelECEditor.css({ "font-size" : 13, border : "1px solid #1976D2" });
 
         this.ui.panelsButtonSet.append(this.ui.sceneTreeButton);
         this.ui.panelsButtonSet.append(labelSceneTree);

@@ -1098,6 +1098,24 @@ var RocketEditor = IEditor.$extend(
     },
 
     /* virtual */
+    defaultFontConfig : function()
+    {
+        return {
+            "font-family"    : '"Roboto", sans-serif',
+            "font-size"      : "14px",
+            "text-transform" : "uppercase"
+        };
+    },
+
+    /* virtual */
+    defaultMonospaceFontConfig : function()
+    {
+        return {
+            "font-family" : '"Source Code Pro", monospace'
+        };
+    },
+
+    /* virtual */
     isConnected : function()
     {
         return Tundra.client.isConnected();
@@ -1112,15 +1130,14 @@ var RocketEditor = IEditor.$extend(
     /* virtual */
     height : function()
     {
-        var containerHeight = Tundra.container.height();
-        var taskbarHeight = (Tundra.usingPolymer() ? 0 : Tundra.ui.taskbar.height());
-
+        var containerHeight = this.container().height();
+        var taskbarHeight = (this.taskbar() ? this.taskbar().height() : 0);
         return containerHeight - taskbarHeight;
     },
 
     taskbar : function()
     {
-        return Tundra.client.ui.taskbar;
+        return (Tundra.usingPolymer() && Tundra.ui.taskbar ? undefined : Tundra.ui.taskbar);
     },
 
     container : function()
@@ -1164,7 +1181,8 @@ var RocketEditor = IEditor.$extend(
             }
         };
 
-        AsyncHelper.async(Tundra.ui.onWindowResizeDOM.bind(Tundra.ui), 100);
+        Tundra.ui.onWindowResizeDOM();
+        AsyncHelper.async(Tundra.ui.onWindowResizeDOM.bind(Tundra.ui));
     },
 
     /* pure virtual */
@@ -1419,6 +1437,9 @@ var TransformEditor = ITransformEditor.$extend(
 
     onUpdate : function(event)
     {
+        if (!this.targetPlaceable)
+            return;
+
         var transform = this.targetPlaceable.attribute("transform").getClone();
         transform.setPosition(this.targetPlaceable.sceneNode.position.clone());
         transform.setRotation(this.targetPlaceable.sceneNode.quaternion.clone());
