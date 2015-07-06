@@ -2352,6 +2352,10 @@ var IEditor = IWrapper.$extend(
 
     createTreeItemForEntity : function(entityPtr, parentNode)
     {
+        var entityNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        if (isNotNull(entityNode))
+            return;
+
         var childNode = parentNode.addChildren({
             title : this.getNodeTitleForEntity(entityPtr),
             key : "sceneNode-" + entityPtr.id

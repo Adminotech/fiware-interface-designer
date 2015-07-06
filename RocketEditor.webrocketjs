@@ -1078,9 +1078,9 @@ var RocketEditor = IEditor.$extend(
         scene : null
     },
 
-    __init__ : function()
+    __init__ : function(options)
     {
-        this.$super("rocket");
+        this.$super(options);
 
         $("head").append('<link rel="stylesheet" href="../src/application/editor/lib/skin-win8/ui.fancytree.css">');
 
@@ -1337,6 +1337,9 @@ var TransformEditor = ITransformEditor.$extend(
         {
             if (isNull(this.wireframeHelper))
             {
+                if (isNull(mesh.meshAsset) || isNull(mesh.meshAsset.mesh))
+                    return;
+
                 var meshClone = mesh.meshAsset.mesh.children[0].clone();
                 this.wireframeHelper = new THREE.WireframeHelper(meshClone, 0x00ffff);
                 this.wireframeHelper.material.linewidth = 2;
