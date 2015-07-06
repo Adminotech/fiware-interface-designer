@@ -1213,14 +1213,17 @@ var RocketEditor = IEditor.$extend(
         var wrapper = new RocketMouseEvent(mouseEvent);
         this.callback("onMouseEvent", wrapper);
 
-        /*var suppressed = wrapper.suppressed;
+        // @todo Fix this correctly by doing actions like selecting entity on "release" instead of "press"
+        // this has to happen in InterfaceDesigner-main.js not here. But we need to provide it enough info
+        // as in if left button was down on the previous "press".
+        var suppressed = wrapper.suppressed;
         if (mouseEvent.type === "release")
         {
             suppressed = (this._lastMouseSuppressed === true);
             this._lastMouseSuppressed = false;
         }
         else
-            this._lastMouseSuppressed = wrapper.suppressed;*/
+            this._lastMouseSuppressed = wrapper.suppressed;
         return (!wrapper.suppressed);
     },
 
