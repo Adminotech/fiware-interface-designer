@@ -8,9 +8,10 @@ define([
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
+        "core/frame/AsyncHelper",
         "application/editor/InterfaceDesigner-main",
         "application/editor/lib/jquery.ui-contextmenu.min"
-    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor, _jquicm) {
+    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, AsyncHelper, _Editor, _jquicm) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -1105,14 +1106,14 @@ var RocketEditor = IEditor.$extend(
     /* virtual */
     width : function()
     {
-        return Tundra.client.container.width();
+        return this.container().width();
     },
 
     /* virtual */
     height : function()
     {
-        var containerHeight = Tundra.client.container.height();
-        var taskbarHeight = Tundra.ui.taskbar.height();
+        var containerHeight = Tundra.container.height();
+        var taskbarHeight = (Tundra.usingPolymer() ? 0 : Tundra.ui.taskbar.height());
 
         return containerHeight - taskbarHeight;
     },
@@ -1124,13 +1125,46 @@ var RocketEditor = IEditor.$extend(
 
     container : function()
     {
-        return Tundra.client.container;
+        return (Tundra.usingPolymer() ? $("body") : Tundra.container);
     },
 
     /* pure virtual */
-    addWidget : function(element)
+    addWidget : function(element, type)
     {
-        Tundra.ui.addWidgetToScene(element);
+        $("body").append(element);
+
+        element._tundraType = type;
+        if (!Array.isArray(this._tundraElements))
+            this._tundraElements = [];
+        this._tundraElements.push(element);
+    },
+
+    setEnabled : function(enabled)
+    {
+        this.$super(enabled);
+
+        if (!Array.isArray(this._tundraElements))
+            return;
+
+        for (var i = 0; i < this._tundraElements.length; i++)
+        {
+            var element = this._tundraElements[i];
+            if (element._tundraType === "top")
+            {
+                Tundra.container.css({
+                    top    : (enabled ? element.outerHeight(true) : ""),
+                    height : (enabled ? "calc(100% - " + element.outerHeight(true) + "px)" : "100%")
+                });
+            }
+            else if (element._tundraType === "right")
+            {
+                Tundra.container.css({
+                    width : (enabled ? "calc(100% - " + element.outerWidth(true) + "px)" : "100%")
+                });
+            }
+        };
+
+        AsyncHelper.async(Tundra.ui.onWindowResizeDOM.bind(Tundra.ui), 100);
     },
 
     /* pure virtual */
@@ -1143,14 +1177,15 @@ var RocketEditor = IEditor.$extend(
     registerKeyEventCallback : function(context, callback)
     {
         this.registerCallback("onKeyEvent", context, callback);
-        Tundra.input.onKeyEvent(this, this.onKeyEvent);
+        Tundra.input.onKeyEvent(this, this.onKeyEvent, 1000);
     },
 
     /* pure virtual */
     registerMouseEventCallback : function(context, callback)
     {
         this.registerCallback("onMouseEvent", context, callback);
-        Tundra.input.onMouseEvent(this, this.onMouseEvent);
+        Tundra.input.onMousePress(this, this.onMouseEvent, 1000);
+        Tundra.input.onMouseRelease(this, this.onMouseEvent, 1000);
     },
 
     /* pure virtual */
@@ -1168,17 +1203,31 @@ var RocketEditor = IEditor.$extend(
 
     onKeyEvent : function(keyEvent)
     {
-        this.callback("onKeyEvent", new RocketKeyEvent(keyEvent));
+        var wrapper = new RocketKeyEvent(keyEvent);
+        this.callback("onKeyEvent", wrapper);
+        return (!wrapper.suppressed);
     },
 
     onMouseEvent : function(mouseEvent)
     {
-        this.callback("onMouseEvent", new RocketMouseEvent(mouseEvent));
+        var wrapper = new RocketMouseEvent(mouseEvent);
+        this.callback("onMouseEvent", wrapper);
+
+        /*var suppressed = wrapper.suppressed;
+        if (mouseEvent.type === "release")
+        {
+            suppressed = (this._lastMouseSuppressed === true);
+            this._lastMouseSuppressed = false;
+        }
+        else
+            this._lastMouseSuppressed = wrapper.suppressed;*/
+        return (!wrapper.suppressed);
     },
 
     onResizeEvent : function(width, height)
     {
-        this.callback("onResizeEvent", width, height);
+        var body = $("body");
+        this.callback("onResizeEvent", body.width(), body.height());
     },
 
     initTransformEditor : function()
@@ -1384,23 +1433,12 @@ var TransformEditor = ITransformEditor.$extend(
             if (isNotNull(this.wireframeHelper))
             {
                 var mesh = this.targetPlaceable.parentEntity.mesh;
-                if (isNull(mesh))
+                if (isNull(mesh) || !mesh.meshAsset || !mesh.meshAsset.isLoaded())
                     return;
 
-                var nodeTransformation = mesh.attribute("nodeTransformation").getClone();
-                var wireTransform = this.oldTransform.clone();
-                wireTransform.pos.add(nodeTransformation.pos);
-                wireTransform.scale.multiply(nodeTransformation.scale);
-
-                var oldOrientation = wireTransform.orientation();
-                oldOrientation.multiply(nodeTransformation.orientation());
-                wireTransform.setRotation(oldOrientation);
-
-                this.wireframeHelper.position.copy(wireTransform.pos);
-                this.wireframeHelper.scale.copy(wireTransform.scale);
-                this.wireframeHelper.quaternion.copy(wireTransform.orientation());
-                this.wireframeHelper.updateMatrix();
-                this.wireframeHelper.updateMatrixWorld();
+                var meshThree = mesh.meshAsset.mesh.children[0];
+                this.wireframeHelper.matrix.copy(meshThree.matrix);
+                this.wireframeHelper.matrixWorld.copy(meshThree.matrixWorld);
                 this.wireframeHelper.visible = true;
             }
         }

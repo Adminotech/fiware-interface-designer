@@ -77,7 +77,7 @@ var IWrapper = Class.$extend(
         this.callbacks = {};
     },
 
-    /** 
+    /**
         Checks if the main wrapped object has expired, i.e. the pointer is not valid anymore
         @return {boolean}
     */
@@ -127,7 +127,7 @@ var IWrapper = Class.$extend(
     /**
         Executes the custom event `eventType`
         @param {string} eventType The type of event executed
-        @param {...any} [arguments] The arguments that this callback needs to be called with 
+        @param {...any} [arguments] The arguments that this callback needs to be called with
     */
     callback : function(eventType)
     {
@@ -277,7 +277,7 @@ var SceneWrapper = IWrapper.$extend(
         return typeName;
     },
 
-    /** 
+    /**
         Returns an attribute name from given attribute type ID.<br>
         The implementation of this method should provide mapping from attribute type unique ID, to a human-readable attribute name string
         @param {number} attrTypeId The attribute type ID
@@ -286,7 +286,7 @@ var SceneWrapper = IWrapper.$extend(
     */
     attributeTypeToName : function(attrTypeId) {},
 
-    /** 
+    /**
         Returns a list of all attribute type IDs.<br>
         The implementation of this method should provide a list of all attribute type IDs that are used from the underlying system.
         @virtual
@@ -396,7 +396,7 @@ var SceneWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'entity created' event.<br>
-        The implementation of this method should internally subscribe to the 'entity created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'entity created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -406,7 +406,7 @@ var SceneWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'entity removed' event.<br>
-        The implementation of this method should internally subscribe to the 'entity removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'entity removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -416,7 +416,7 @@ var SceneWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'component created' event.<br>
-        The implementation of this method should internally subscribe to the 'component created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'component created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -426,7 +426,7 @@ var SceneWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'component removed' event.<br>
-        The implementation of this method should internally subscribe to the 'component removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'component removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -436,7 +436,7 @@ var SceneWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'attribute change' event.<br>
-        The implementation of this method should internally subscribe to the 'attribute change' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'attribute change' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -470,7 +470,7 @@ var EntityWrapper = IWrapper.$extend(
 /** @lends EntityWrapper.prototype */
 {
     /**
-        Wrapper interface for an entity object. 
+        Wrapper interface for an entity object.
         The entity object should provide access to manipulating individual entities and its components.
         @constructs
         @extends IWrapper
@@ -507,7 +507,7 @@ var EntityWrapper = IWrapper.$extend(
         this.temporary = isTemporary;
     },
 
-    /** 
+    /**
         Returns the parent ID of this entity, or null if not parented
         @virtual
         @return {?number} - The parent entity ID
@@ -517,7 +517,7 @@ var EntityWrapper = IWrapper.$extend(
         return null;
     },
 
-    /** 
+    /**
         Checks if this entity is ancestor of `entityPtr`.<br>
         @param {EntityWrapper} entityPtr The potential ancestor to be checked
         @virtual
@@ -528,7 +528,7 @@ var EntityWrapper = IWrapper.$extend(
         return false;
     },
 
-    /** 
+    /**
         Serialize this entity into a JSON string.<br>
         The implementation should take care of the serialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
         @virtual
@@ -536,7 +536,7 @@ var EntityWrapper = IWrapper.$extend(
     */
     serialize : function() {},
 
-    /** 
+    /**
         Deserializes given JSON string to this entity.<br>
         The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
         @param {string} jsonObject The JSON string
@@ -544,35 +544,35 @@ var EntityWrapper = IWrapper.$extend(
     */
     deserialize : function(jsonObject) {},
 
-    /** 
+    /**
         Sets the entity name.<br>
         @param {string} name The desired name for this entity
         @virtual
     */
     setName : function(name) {},
 
-    /** 
+    /**
         Returns the entity name.<br>
         @return {string} - The current name for this entity
         @virtual
     */
     getName : function() {},
 
-    /** 
+    /**
         Returns the number of components that this entity has.<br>
         @return {number} - The number of components
         @virtual
     */
     numberOfComponents : function() {},
 
-    /** 
+    /**
         Returns an array of all components that this entity has.<br>
         @return {ComponentWrapper[]}
         @virtual
     */
     components : function() {},
 
-    /** 
+    /**
         Creates a component and sets this entity as its parent.<br>
         The implementation of this method should internally create a component to this entity.
         @param {string} typeName The type name for this component.
@@ -583,16 +583,16 @@ var EntityWrapper = IWrapper.$extend(
     */
     createComponent : function(typeName, name, isLocal) {},
 
-    /** 
+    /**
         Checks if the component with given type and name exists.<br>
         @param {string} type The type name for this component.
         @param {string} [name] The name for the component.
-        @return {boolean} - 
+        @return {boolean} -
         @virtual
     */
     hasComponent : function(type, name) {},
 
-    /** 
+    /**
         Retrieve a component with given type and name.<br>
         @param {string} type The type name for this component.
         @param {string} [name] The name for the component.
@@ -601,7 +601,7 @@ var EntityWrapper = IWrapper.$extend(
     */
     getComponent : function(type, name) {},
 
-    /** 
+    /**
         Retrieve a component with given unique ID.<br>
         @param {number} componentId The ID for the component.
         @return {?ComponentWrapper} - The component, or null if not found
@@ -609,7 +609,7 @@ var EntityWrapper = IWrapper.$extend(
     */
     componentById : function(componentId) {},
 
-    /** 
+    /**
         Remove a component with given unique ID.<br>
         @param {number} componentId The ID for the component.
         @virtual
@@ -621,7 +621,7 @@ var ComponentWrapper = IWrapper.$extend(
 /** @lends ComponentWrapper.prototype */
 {
     /**
-        Wrapper interface for a component object. 
+        Wrapper interface for a component object.
         The component object should provide access to manipulating component attributes and other options.
         @constructs
         @extends IWrapper
@@ -633,21 +633,21 @@ var ComponentWrapper = IWrapper.$extend(
         /**
             Unique ID of the component
             @type {number}
-            @default -1 
+            @default -1
         */
         this.id = isNull(id) ? -1 : id;
 
         /**
             Name of the component
             @type {string}
-            @default "" 
+            @default ""
         */
         this.name = isNull(name) ? "" : name;
 
         /**
             Type name of the component
             @type {string}
-            @default "" 
+            @default ""
         */
         this.typeName = isNull(type) ? "" : type;
 
@@ -658,7 +658,7 @@ var ComponentWrapper = IWrapper.$extend(
         this.pId = parentId;
     },
 
-    /** 
+    /**
         Returns this component's parent entity unique ID.<br>
         @return {number} - The ID of the parent.
         @virtual
@@ -668,7 +668,7 @@ var ComponentWrapper = IWrapper.$extend(
         return this.pId;
     },
 
-    /** 
+    /**
         Returns the component name.<br>
         @return {string} - The current name for this component
         @virtual
@@ -678,7 +678,7 @@ var ComponentWrapper = IWrapper.$extend(
         return this.name;
     },
 
-    /** 
+    /**
         Serialize this component into a JSON string.<br>
         The implementation should take care of the serialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
         @virtual
@@ -686,7 +686,7 @@ var ComponentWrapper = IWrapper.$extend(
     */
     serialize : function() {},
 
-    /** 
+    /**
         Deserializes given JSON string to this component.<br>
         The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
         @param {string} jsonObject The JSON string
@@ -694,7 +694,7 @@ var ComponentWrapper = IWrapper.$extend(
     */
     deserialize : function(jsonObject) {},
 
-    /** 
+    /**
         Returns if the component is dynamic, i.e. its attributes can be added / removed on demand.<br>
         @return {boolean} - true if dynamic component, false otherwise
         @virtual
@@ -750,7 +750,7 @@ var ComponentWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'attribute added' event.<br>
-        The implementation of this method should internally subscribe to the 'attribute added' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'attribute added' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -760,7 +760,7 @@ var ComponentWrapper = IWrapper.$extend(
 
     /**
         Registers a callback for an 'attribute removed' event.<br>
-        The implementation of this method should internally subscribe to the 'attribute removed' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event. 
+        The implementation of this method should internally subscribe to the 'attribute removed' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
         @param {object} context The object as context.
         @param {function} callback The callback to be called.
         @virtual
@@ -774,7 +774,7 @@ var AttributeWrapper = IWrapper.$extend(
 /** @lends AttributeWrapper.prototype */
 {
     /**
-        Wrapper interface for an attribute object. 
+        Wrapper interface for an attribute object.
         The attribute object should provide access to manipulating values of attributes.
         @param {number} index The index of this attribute. Index is the position where this attribute resides in the component
         @param {number} typeId The type ID of the attribute
@@ -841,9 +841,9 @@ var IEvent = Class.$extend(
 /** @lends IEvent.prototype */
 {
 
-    /** 
+    /**
         A wrapper for events. Any input event wrapper should inherit this class.
-        @param {number} eventType The event type, see the static members 
+        @param {number} eventType The event type, see the static members
         @param {number} [id] Unique ID for this event
         @constructs
     */
@@ -855,9 +855,10 @@ var IEvent = Class.$extend(
         this.targetId = "";
         this.targetNodeName = "";
         this.originalEvent = null;
+        this.suppressed = false
     },
 
-    __classvars__ : 
+    __classvars__ :
     {
         /**
             Mouse event
@@ -886,7 +887,7 @@ var IEvent = Class.$extend(
 var KeyEventWrapper = IEvent.$extend(
 /** @lends KeyEventWrapper.prototype */
 {
-    /** 
+    /**
         A wrapper for key events. Any key event wrapper should inherit this class.
         @param {number} [id] Unique ID for this event
         @constructs
@@ -920,7 +921,7 @@ var KeyEventWrapper = IEvent.$extend(
 var MouseEventWrapper = IEvent.$extend(
 /** @lends MouseEventWrapper.prototype */
 {
-    /** 
+    /**
         A wrapper for mouse events. Any mouse event wrapper should inherit this class.
         @param {number} [id] Unique ID for this event
         @constructs
@@ -947,43 +948,43 @@ var MouseEventWrapper = IEvent.$extend(
 var RaycastResult = Class.$extend(
 /** @lends RaycastResult.prototype */
 {
-    /** 
+    /**
         A raycast result object.
         @constructs
     */
     __init__ : function()
     {
-        /** 
+        /**
             A pointer to the entity wrapper object that has been hit. Can be null
             @var {?EntityWrapper}
         */
         this.entity = null;
 
-        /** 
+        /**
             A pointer to the component wrapper object (for example a mesh, billboard etc) that has been hit. Can be null
             @var {?ComponentWrapper}
         */
         this.component = null;
 
-        /** 
+        /**
             A 3-tuple that represents the position of the location where it hit the entity.
             @var {*}
         */
         this.pos = null;
 
-        /** 
+        /**
             Distance from screen coordinates to the entity that has been hit by the raycasting.
             @var {number}
         */
         this.distance = -1;
 
-        /** 
+        /**
             Index of the submesh that has been hit by the raycasting.
             @var {number}
         */
         this.submesh = -1;
 
-        /** 
+        /**
             Face index that has been hit by the raycasting.
             @var {number}
         */
@@ -1020,8 +1021,8 @@ var ITransformEditor = Class.$extend(
     },
 
     /**
-        Set the mode of transform. Usually values should be "translation", "rotate" and "scale" 
-        @param {string} mode 
+        Set the mode of transform. Usually values should be "translation", "rotate" and "scale"
+        @param {string} mode
     */
     setMode : function(mode)
     {
@@ -1040,7 +1041,7 @@ var ITransformEditor = Class.$extend(
 var IEditor = IWrapper.$extend(
 /** @lends IEditor.prototype */
 {
-    __classvars__ : 
+    __classvars__ :
     {
         /** An instance to the SceneWrapper-derived object
             @static
@@ -1057,14 +1058,14 @@ var IEditor = IWrapper.$extend(
         In order to start the interface designer, an instance should be made of the implementation of this class. Make sure that all dependencies that your implementation and the interface designer uses are included before making the instance.<br>
         Any custom option of your needs can be added to the `options` object, and subsequently handled in your own implementation.<br>
         Be sure to call the base implementation of the editor in your derived class constructor, as shown in the example.
-        @example 
+        @example
         * var MyEditor = IEditor.$extend({
         * {
         *     __init__ : function(options)
         *     {
         *         // call the base implementation constructor
         *         this.$super(options);
-        *         // your code here 
+        *         // your code here
         *     },
         *     // ... derived methods etc.
         * });
@@ -1081,7 +1082,7 @@ var IEditor = IWrapper.$extend(
     {
         this.$super();
 
-        /** 
+        /**
             An instance to the IEditor-derived object. Use with caution.
             @static
             @type {SceneWrapper}
@@ -1089,7 +1090,7 @@ var IEditor = IWrapper.$extend(
         */
         IEditor.Instance = this;
 
-        /** 
+        /**
             Type of the underlying system as string
             @type {string}
             @default ""
@@ -1149,7 +1150,7 @@ var IEditor = IWrapper.$extend(
     },
 
     /**
-        Returns if the editor is enabled 
+        Returns if the editor is enabled
         @return {boolean} - true if enabled
     */
     isEditorEnabled : function()
@@ -1158,7 +1159,7 @@ var IEditor = IWrapper.$extend(
     },
 
     /**
-        Returns if there is a connection to a server 
+        Returns if there is a connection to a server
         @return {boolean} - true if connected
         @virtual
     */
@@ -1168,7 +1169,7 @@ var IEditor = IWrapper.$extend(
     },
 
     /**
-        Returns the available screen width from browser 
+        Returns the available screen width from browser
         @return {number}
         @virtual
     */
@@ -1178,7 +1179,7 @@ var IEditor = IWrapper.$extend(
     },
 
     /**
-        Returns the available screen height from browser 
+        Returns the available screen height from browser
         @return {number}
         @virtual
     */
@@ -1258,7 +1259,7 @@ var IEditor = IWrapper.$extend(
         @param {string[]} components An array of component type names
         @param {string} [entityName] Name for the new entity
         @virtual
-    */ 
+    */
     addEntityCommand : function(components, entityName) {},
 
     /**
@@ -1266,7 +1267,7 @@ var IEditor = IWrapper.$extend(
         Implementations should create a generic command derived from {@link ICommand} for removing an entity from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
         @param {EntityWrapper} entityPtr The entity to be removed
         @virtual
-    */ 
+    */
     removeEntityCommand : function(entityPtr) {},
 
     /**
@@ -1278,7 +1279,7 @@ var IEditor = IWrapper.$extend(
         @param {boolean} isLocal Create local component
         @param {boolean} temporary Mark this component as temporary
         @virtual
-    */ 
+    */
     addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
 
     /**
@@ -1286,7 +1287,7 @@ var IEditor = IWrapper.$extend(
         Implementations should create a generic command derived from {@link ICommand} for removing a component from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
         @param {ComponentWrapper} componentPtr The entity to be removed
         @virtual
-    */ 
+    */
     removeComponentCommand : function(componentPtr) {},
 
     /**
@@ -1298,7 +1299,7 @@ var IEditor = IWrapper.$extend(
         @param {boolean} isLocal Create local component
         @param {boolean} temporary Mark this component as temporary
         @virtual
-    */ 
+    */
     addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
 
     /**
@@ -1306,7 +1307,7 @@ var IEditor = IWrapper.$extend(
         Implementations should create a generic command derived from {@link ICommand} for removing an attribute from the component, and adding that command to the undo manager instance {@link IEditor#undoStack}
         @param {AttributeWrapper} attributePtr The attribute to be removed
         @virtual
-    */ 
+    */
     removeAttributeCommand : function(attributePtr) {},
 
     /**
@@ -1315,15 +1316,15 @@ var IEditor = IWrapper.$extend(
         @param {AttributeWrapper} attributePtr The attribute to be changed
         @param {*} value The new value to be set
         @virtual
-    */ 
+    */
     changeAttributeCommand : function(attributePtr, value) {},
 
     /**
         Saves the scene.<br>
-        Implementations should handle the saving of the scene according to the underlying system for serialization of the scene description 
+        Implementations should handle the saving of the scene according to the underlying system for serialization of the scene description
         @param {string} filename The desired filename without extension
         @virtual
-    */ 
+    */
     save : function(filename) {},
 
     /**
@@ -1338,7 +1339,7 @@ var IEditor = IWrapper.$extend(
         Implementations should make their own transform editors by extending {@link ITransformEditor} and all of its methods
         @param {string} filename The desired filename without extension
         @virtual
-    */ 
+    */
     initTransformEditor : function() {},
 
     /**
@@ -1675,9 +1676,9 @@ var IEditor = IWrapper.$extend(
         this.ui.ecEditor.panel.hide();
         toolbar.hide();
 
-        this.addWidget(this.ui.sceneTree.panel);
-        this.addWidget(this.ui.ecEditor.panel);
-        this.addWidget(toolbar);
+        this.addWidget(this.ui.sceneTree.panel, "right");
+        this.addWidget(this.ui.ecEditor.panel), "right";
+        this.addWidget(toolbar, "top");
 
         this.registerResizeEventCallback(this, this._onResizeEvent);
 
@@ -1721,14 +1722,17 @@ var IEditor = IWrapper.$extend(
         if (editorShortcutPressed)
         {
             this.toggleEditor();
+            // @todo Make the wrapper impl prevent/stop propagation
             keyEvent.originalEvent.preventDefault();
             keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true; // @todo Remove when above done
         }
         else if (panelsShortcutPressed)
         {
             this.togglePanels();
             keyEvent.originalEvent.preventDefault();
             keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true;
         }
         else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("z"))
             this.undoStack.undo();
@@ -1757,10 +1761,16 @@ var IEditor = IWrapper.$extend(
                         return;
 
                 this.selectEntity(raycastResult.entity);
+                mouseEvent.suppressed = true;
             }
             else
+            {
                 if (isNotNull(this.transformEditor))
+                {
                     this.transformEditor.clearSelection();
+                    mouseEvent.suppressed = true;
+                }
+            }
         }
     },
 
@@ -2073,7 +2083,7 @@ var IEditor = IWrapper.$extend(
             $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
     },
 
-    /** 
+    /**
         Toggles the editor on or off
     */
     toggleEditor : function()
@@ -2209,7 +2219,7 @@ var IEditor = IWrapper.$extend(
             this.transformEditor.setMode(mode);
     },
 
-    /** 
+    /**
         Creates a "remove entity" command on the currently edited object.
     */
     removeCurrent : function()
@@ -2267,8 +2277,8 @@ var IEditor = IWrapper.$extend(
                         {
                             var componentPtr = entity.componentById(componentId);
                             var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveComponent", 
-                                "Remove " + compStr, 
+                                "RemoveComponent",
+                                "Remove " + compStr,
                                 "Are you sure that you want to remove this " + compStr + "?",
                                 function(){
                                     IEditor.Instance.removeComponentCommand(componentPtr);
@@ -2279,11 +2289,11 @@ var IEditor = IWrapper.$extend(
                         else
                         {
                             var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveEntity", 
-                                "Remove " + entStr + " with ID " + entityId, 
+                                "RemoveEntity",
+                                "Remove " + entStr + " with ID " + entityId,
                                 "Are you sure that you want to remove this " + entStr + "?",
                                 function(){
-                                    IEditor.Instance.removeEntityCommand(entity);                                    
+                                    IEditor.Instance.removeEntityCommand(entity);
                                 });
 
                             confirmDialog.exec();
@@ -2750,7 +2760,7 @@ var IEditor = IWrapper.$extend(
                     var componentPtr = entityPtr.componentById(componentId);
                     var compStr = IEditor.scene.componentString;
                     var confirmDialog = ModalDialog.confirmationDialog(
-                        "RemoveComponent", 
+                        "RemoveComponent",
                         "Remove " + compStr,
                         "Are you sure that you want to remove this " + compStr + "?",
                         function()
@@ -2760,7 +2770,7 @@ var IEditor = IWrapper.$extend(
                     );
 
                     confirmDialog.exec();
-                    
+
                 }
             }
         });
@@ -3312,7 +3322,7 @@ var UndoRedoManager = Class.$extend(
         *         this.someObject.i -= 1;
         *     },
         * });
-        * 
+        *
         * var undoManager = new UndoRedoManager();
         * var myObject = { i:0 };
         * var newIncrementCommand = new IncrementCommand(myObject);
@@ -3460,7 +3470,7 @@ var UndoRedoManager = Class.$extend(
         Execute undo.<br>
         Removes the most recent command executed from the undo stack, calls 'undo' on it, and pushes it in the redo stack.
         @param {boolean} [disconnected=false] Set this to true if the 'stateChanged' event should not be fired
-    */ 
+    */
     undo : function(disconnected)
     {
         if (!this.canUndo())
@@ -3971,7 +3981,7 @@ var ToolkitManager = Class.$extend(
                         return;
                     }
 
-                    IEditor.Instance.load(input[0].files[0]);                    
+                    IEditor.Instance.load(input[0].files[0]);
                     $(this).dialog("close");
                     $(this).remove();
                 },
@@ -4036,9 +4046,9 @@ var ToolkitManager = Class.$extend(
         });
 
         this.ui.deleteButton.click(function(){
-            var dialog = ModalDialog.confirmationDialog("RemoveItem", 
+            var dialog = ModalDialog.confirmationDialog("RemoveItem",
                 "Remove edited object",
-                "Are you sure you want to remove the selected object?", 
+                "Are you sure you want to remove the selected object?",
                 function(){
                     IEditor.Instance.removeCurrent();
                 });
@@ -4230,7 +4240,7 @@ var ToolkitManager = Class.$extend(
         }];
 
         var quickAddItems = [{
-            text : "Movable", 
+            text : "Movable",
             icon: "ui-icon-arrow-4"
         },
         {
@@ -4327,6 +4337,7 @@ var ToolkitManager = Class.$extend(
 
         this.toolbar.css("width", width - IEditor.Instance.panelWidth);
     },
+
     onUndoRedoStateChanged : function(undoItems, redoItems, total)
     {
         this.ui.undoButtonSet.buttonset("option", "disabled", undoItems.length === 0);
