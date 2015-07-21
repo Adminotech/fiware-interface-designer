@@ -1375,8 +1375,8 @@ var TransformEditor = ITransformEditor.$extend(
         this.transformControl = new THREE.TransformControls(camera, domElement);
         this.transformControl.setSpace("local");
         this.transformControl.addEventListener("change", this.onUpdate.bind(this));
-        this.transformControl.addEventListener("dragStart", this.onDragStarted.bind(this));
-        this.transformControl.addEventListener("dragStop", this.onDragStopped.bind(this));
+        this.transformControl.addEventListener("mouseDown", this.onDragStarted.bind(this));
+        this.transformControl.addEventListener("mouseUp", this.onDragStopped.bind(this));
 
         this.cameraSubscription = Tundra.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
         Tundra.frame.onUpdate(this, this.onFrameUpdate);
@@ -1398,6 +1398,7 @@ var TransformEditor = ITransformEditor.$extend(
             return;
         }
 
+        this.cameraSubscription = Tundra.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
         this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
         this.transformControl.attach(this.targetPlaceable.sceneNode);
         Tundra.renderer.scene.add(this.transformControl);
@@ -1450,58 +1451,51 @@ var TransformEditor = ITransformEditor.$extend(
 
     onDragStarted : function(event)
     {
-        if (event.detail.object === this.targetPlaceable.sceneNode)
+        this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
+
+        if (isNotNull(this.wireframeHelper))
         {
-            this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
+            var mesh = this.targetPlaceable.parentEntity.mesh;
+            if (isNull(mesh) || !mesh.meshAsset || !mesh.meshAsset.isLoaded())
+                return;
 
-            if (isNotNull(this.wireframeHelper))
-            {
-                var mesh = this.targetPlaceable.parentEntity.mesh;
-                if (isNull(mesh) || !mesh.meshAsset || !mesh.meshAsset.isLoaded())
-                    return;
-
-                var meshThree = mesh.meshAsset.mesh.children[0];
-                this.wireframeHelper.matrix.copy(meshThree.matrix);
-                this.wireframeHelper.matrixWorld.copy(meshThree.matrixWorld);
-                this.wireframeHelper.visible = true;
-            }
+            var meshThree = mesh.meshAsset.mesh.children[0];
+            this.wireframeHelper.matrix.copy(meshThree.matrixWorld);
+            this.wireframeHelper.visible = true;
         }
     },
 
     onDragStopped : function(event)
     {
-        if (event.detail.object === this.targetPlaceable.sceneNode)
+        if (isNotNull(this.wireframeHelper))
+            this.wireframeHelper.visible = false;
+
+        var value = null;
+        var newValue = null;
+        var transform = this.targetPlaceable.attribute("transform").getClone();
+
+        if (event.mode === "translate")
         {
-            if (isNotNull(this.wireframeHelper))
-                this.wireframeHelper.visible = false;
-
-            var value = null;
-            var newValue = null;
-            var transform = this.targetPlaceable.attribute("transform").getClone();
-
-            if (event.detail.mode === "translate")
-            {
-                value = this.oldTransform.pos.clone();
-                newValue = transform.pos;
-            }
-            else if (event.detail.mode === "rotate")
-            {
-                value = this.oldTransform.rot.clone();
-                newValue = transform.rot;
-            }
-            else if (event.detail.mode === "scale")
-            {
-                value = this.oldTransform.scale.clone();
-                newValue = transform.scale;
-            }
-            else
-            {
-                RocketEditor.scene.logError("Unknown transform mode:", event.detail.mode);
-                return;
-            }
-
-            IEditor.Instance.undoStack.pushCommand(new TransformCommand(Tundra.scene, this.targetPlaceable, event.detail.mode, value, newValue));
+            value = this.oldTransform.pos.clone();
+            newValue = transform.pos;
         }
+        else if (event.mode === "rotate")
+        {
+            value = this.oldTransform.rot.clone();
+            newValue = transform.rot;
+        }
+        else if (event.mode === "scale")
+        {
+            value = this.oldTransform.scale.clone();
+            newValue = transform.scale;
+        }
+        else
+        {
+            RocketEditor.scene.logError("Unknown transform mode:", event.mode);
+            return;
+        }
+
+        IEditor.Instance.undoStack.pushCommand(new TransformCommand(Tundra.scene, this.targetPlaceable, event.mode, value, newValue));
     },
 
     clearSelection : function()
