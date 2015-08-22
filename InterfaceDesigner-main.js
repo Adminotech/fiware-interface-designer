@@ -2125,8 +2125,7 @@ var IEditor = IWrapper.$extend(
     */
     toggleEditor : function()
     {
-        this.enabled = !this.enabled;
-        this.setEnabled(this.enabled);
+        this.setEnabled(!this.enabled);
     },
 
     /**
@@ -2135,6 +2134,10 @@ var IEditor = IWrapper.$extend(
     */
     setEnabled : function(enabled)
     {
+        if (this.enabled === enabled)
+            return;
+        this.enabled = enabled;
+
         if (enabled)
         {
             this.switchPanels(false);

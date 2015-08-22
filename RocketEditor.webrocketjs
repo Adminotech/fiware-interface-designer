@@ -1447,6 +1447,8 @@ var TransformEditor = ITransformEditor.$extend(
         transform.setScale(this.targetPlaceable.sceneNode.scale.clone());
 
         this.targetPlaceable.attribute("transform").set(transform);
+
+        Tundra.events.send("InterfaceDesigner.DragUpdate", transform);
     },
 
     onDragStarted : function(event)
@@ -1462,7 +1464,10 @@ var TransformEditor = ITransformEditor.$extend(
             var meshThree = mesh.meshAsset.mesh.children[0];
             this.wireframeHelper.matrix.copy(meshThree.matrixWorld);
             this.wireframeHelper.visible = true;
+
         }
+
+        Tundra.events.send("InterfaceDesigner.DragStart", this.targetPlaceable.parentEntity);
     },
 
     onDragStopped : function(event)
@@ -1496,6 +1501,8 @@ var TransformEditor = ITransformEditor.$extend(
         }
 
         IEditor.Instance.undoStack.pushCommand(new TransformCommand(Tundra.scene, this.targetPlaceable, event.mode, value, newValue));
+
+        Tundra.events.send("InterfaceDesigner.DragEnd", this.targetPlaceable.parentEntity);
     },
 
     clearSelection : function()
@@ -1525,14 +1532,39 @@ var EditorApplication = IApplication.$extend(
     {
         this.$super("Editor");
 
+        Tundra.events.subscribe("InterfaceDesigner.Toggle", function() {
+            if (this.editor)
+                this.editor.toggleEditor();
+        }.bind(this));
+
+        Tundra.events.subscribe("InterfaceDesigner.SetEnabled", function(enabled) {
+            if (this.editor)
+                this.editor.setEnabled(enabled === true);
+        }.bind(this));
+
+        Tundra.events.subscribe("InterfaceDesigner.Start", function(enabled) {
+            this.start();
+        }.bind(this));
+
+        // Auto start in dev mode
+        if (Tundra.usingRequireJS())
+            this.start();
+    },
+
+    start : function()
+    {
+        if (this.started === true || this.editor !== undefined)
+            return;
+        this.started = true;
+
         IApplication.loadDependencies(this,
             "lib/three-TransformControls.js", "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js")
         .done(function()
         {
-            var editor = new RocketEditor({
+            this.editor = new RocketEditor({
                 type: "rocket"
             });
-        });
+        }.bind(this));
     }
 })
 
