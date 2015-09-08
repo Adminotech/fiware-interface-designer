@@ -1708,7 +1708,7 @@ var IEditor = IWrapper.$extend(
         toolbar.hide();
 
         this.addWidget(this.ui.sceneTree.panel, "right");
-        this.addWidget(this.ui.ecEditor.panel), "right";
+        this.addWidget(this.ui.ecEditor.panel, "right");
         this.addWidget(toolbar, "top");
 
         this.registerResizeEventCallback(this, this._onResizeEvent);
@@ -1809,33 +1809,12 @@ var IEditor = IWrapper.$extend(
     {
         var panelHeight = this.height();
         var taskbar = this.taskbar();
-        var container = this.container();
+        var container = $("body");
 
         this.ui.sceneTree.panel.css("height", panelHeight);
         this.ui.ecEditor.panel.css("height", panelHeight);
 
-        if (isNotNull(taskbar))
-        {
-            if (this.ui.sceneTree.panel.is(":visible"))
-            {
-                this.ui.sceneTree.panel.position(
-                {
-                    my : "right bottom",
-                    at : "right top",
-                    of : taskbar
-                });
-            }
-            if (this.ui.ecEditor.panel.is(":visible"))
-            {
-                this.ui.ecEditor.panel.position(
-                {
-                    my : "right bottom",
-                    at : "right top",
-                    of : taskbar
-                });
-            }
-        }
-        else if (isNotNull(container))
+        if (isNotNull(container))
         {
             if (this.ui.sceneTree.panel.is(":visible"))
             {
