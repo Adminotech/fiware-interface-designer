@@ -1038,6 +1038,1625 @@ var ITransformEditor = Class.$extend(
     }
 });
 
+var IPanel = Class.$extend(
+/** @lends IPanel.prototype */
+{
+    /**
+        IPanel interface for panels that can be registered into the editor.<br>
+
+        @constructs
+    */
+    __init__ : function(label, options)
+    {
+        options = options || {};
+        this.ui = {};
+        this.label = label;
+        this.name = label.replace(/\s+/g, '');
+        this.panelWidth = options.panelWidth || 420;
+        this.panelHeight = options.panelHeight || IEditor.Instance.height();
+    },
+
+    initUi : function()
+    {
+        this.ui.panel = $("<div/>");
+        this.ui.panel.attr("id", this.name + "-panel");
+        this.ui.panel.css({
+            "position"          : "absolute",
+            "height"            : this.panelHeight,
+            "width"             : this.panelWidth,
+            "border-left"       : "1px solid gray",
+            "overflow"          : "auto",
+            "font-family"       : "Courier New",
+            "font-size"         : "10pt",
+            "color"             : "rgb(50,50,50)",
+            "background-color"  : "rgba(248,248,248, 0.5)",
+        });
+    },
+
+    show : function()
+    {
+        this.ui.panel.show();
+    },
+
+    hide : function()
+    {
+        this.ui.panel.hide();
+    },
+
+    onWindowResize : function(width, height)
+    {
+        var container = $("body");
+        this.ui.panel.css("height", height);
+
+        if (this.ui.panel.is(":visible"))
+        {
+            this.ui.panel.position(
+            {
+                my : "right top",
+                at : "right top",
+                of : container
+            });
+        }
+    }
+});
+
+var SceneTreePanel = IPanel.$extend(
+{
+    __init__ : function(options)
+    {
+        this.$super("scene tree", options);
+        this.fontConfig = options.fontConfig || {};
+    },
+
+    initUi : function()
+    {
+        this.$super();
+
+        var menuItemsClass = $("<style/>");
+        menuItemsClass.text(".contextmenu-z { z-index: 5; font-size: 14px; }");
+        $("head").append(menuItemsClass);
+
+        this.ui.addEntityButton = $("<button/>", {
+            id : "st-add-entity-button"
+        });
+        this.ui.addEntityButton.css({
+            "position" : "relative",
+            "font-size" : "10px",
+            "min-width": "50%"
+        }).css(this.fontConfig);
+        this.ui.addEntityButton.html("Create Entity...");
+        this.ui.addEntityButton.button({
+            icons : {
+                primary : "ui-icon-plusthick"
+            }
+        });
+
+        this.ui.expColButton = $("<button/>", {
+            id : "st-expand-collapse-button"
+        });
+        this.ui.expColButton.data("toggle", false);
+        this.ui.expColButton.css({
+            "position" : "relative",
+            "font-size" : "10px",
+            "min-width": "49%"
+        }).css(this.fontConfig);
+        this.ui.expColButton.html("Expand / Collapse");
+        this.ui.expColButton.button({
+            icons : {
+                primary : "ui-icon-carat-2-n-s"
+            }
+        });
+
+        this.ui.buttonsHolder = $("<div/>");
+        this.ui.buttonsHolder.attr("id", "scenetree-buttons");
+        this.ui.buttonsHolder.css({
+            "position" : "relative",
+            "overflow" : "auto",
+            "top" : 10,
+            "left" : 10,
+            "width" : "95%",
+            "padding" : 0
+        });
+
+        this.ui.holder = $("<div/>");
+        this.ui.holder.attr("id", "scene-tree-holder");
+        this.ui.holder.css({
+            "position" : "relative",
+            "top" : 20,
+            "left" : 10,
+            "width" : "95%",
+            "height" : "90%",
+            "font-size" : "10px",
+        });
+
+        this.ui.buttonsHolder.append(this.ui.addEntityButton);
+        this.ui.buttonsHolder.append(this.ui.expColButton);
+
+        this.ui.panel.append(this.ui.buttonsHolder);
+        this.ui.panel.append(this.ui.holder);
+        this.ui.panel.hide();
+        IEditor.Instance.addWidget(this.ui.panel, "right");
+
+        this.createContextMenu();
+
+        // Events
+        this.ui.addEntityButton.click(this, this.onAddEntityClicked);
+        this.ui.expColButton.click(this, this.onSTExpColClicked);
+    },
+
+    populateScene : function()
+    {
+        var entities = IEditor.scene.entities();
+
+        var sceneRootElem = $("<ul/>",{
+            id : "sceneTree-rootElement"
+        });
+        sceneRootElem.css("text-align", "left");
+
+        this.ui.holder.append(sceneRootElem);
+        this.ui.holder.fancytree({
+            icons : false,
+            selectMode : 2,
+            select : function(event, data) {
+                console.log(this, event, data);
+            }
+        });
+
+        var rootNode = this.ui.holder.fancytree("getRootNode");
+        for (var i = 0; i < entities.length; i++)
+        {
+            var entity = entities[i];
+            this.createTreeItemForEntity(entity, rootNode);
+        }
+    },
+
+    enable : function()
+    {
+        this.populateScene();
+    },
+
+    disable : function()
+    {
+        this.ui.holder.fancytree("destroy");
+        this.ui.holder.empty();
+        this.ui.panel.hide();
+    },
+
+    createContextMenu : function()
+    {
+        this.ui.holder.contextmenu({
+            addClass: "contextmenu-z",
+            css : { color: "red" },
+            delegate: "span.fancytree-node",
+            menu: [
+                {title: "Edit", cmd: "edit", uiIcon: "ui-icon-pencil"},
+                {title: "Delete", cmd: "delete", uiIcon: "ui-icon-trash"},
+            ],
+            select: this.onContextMenuItemSelected.bind(this)
+        });
+    },
+
+    onEntityCreated : function(entityPtr)
+    {
+        var rootNode = null;
+        var parent = entityPtr.parentId();
+        if (isNull(parent))
+            rootNode = this.ui.holder.fancytree("getRootNode");
+        else
+            rootNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + parent);
+
+        this.createTreeItemForEntity(entityPtr, rootNode);
+    },
+
+    onComponentCreated : function(entityPtr, componentPtr)
+    {
+        var treeNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        this.createTreeItemForComponent(componentPtr, treeNode);
+    },
+
+    createTreeItemForEntity : function(entityPtr, parentNode)
+    {
+        var entityNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        if (isNotNull(entityNode))
+            return;
+
+        var childNode = parentNode.addChildren({
+            title : IEditor.Instance.getNodeTitleForEntity(entityPtr),
+            key : "sceneNode-" + entityPtr.id
+        });
+
+        var components = entityPtr.components();
+        for (var i = 0; i < components.length; i++)
+            this.createTreeItemForComponent(components[i], childNode);
+    },
+
+    createTreeItemForComponent : function(componentPtr, parentNode)
+    {
+        if (isNull(parentNode))
+            return;
+
+        var fullName = IEditor.Instance.getNodeTitleForComponent(componentPtr);
+        var childNode = parentNode.addChildren({
+            title : fullName,
+            key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
+        });
+    },
+
+    onEntityRemoved : function(entityPtr)
+    {
+        this.removeTreeItem(entityPtr);
+    },
+
+    onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        if (componentPtr.typeName === "Name")
+            this.renameEntityNode(entityPtr, true);
+
+        this.removeTreeItem(entityPtr, componentPtr);
+    },
+
+    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        if (componentPtr.typeName === "Name" && attributeName === "name")
+            this.renameEntityNode(entityPtr);
+    },
+
+    renameEntityNode : function(entityPtr, setUnnamed)
+    {
+        var treeItem = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        if (isNull(treeItem))
+            return;
+
+        treeItem.setTitle(IEditor.Instance.getNodeTitleForEntity(entityPtr, setUnnamed));
+    },
+
+    renameComponentNode : function(componentPtr)
+    {
+        var treeItem = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id);
+        if (isNull(treeItem))
+            return;
+
+        treeItem.setTitle(IEditor.Instance.getNodeTitleForComponent(componentPtr));
+    },
+
+    removeTreeItem : function(entityPtr, componentPtr)
+    {
+        var node = null;
+        if (isNull(componentPtr))
+            node = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        else
+            node = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
+
+        if (isNotNull(node))
+            node.remove();
+    },
+
+    onContextMenuItemSelected : function(event, ui)
+    {
+        var element = ui.target[0];
+        if (ui.cmd === "edit")
+        {
+            var node = $.ui.fancytree.getNode(element);
+            var target = node.key.split("-");
+
+            var entityId = -1;
+            var componentId = -1;
+            if (target.length >= 2)
+                entityId = parseInt(target[1]);
+            if (target.length >= 3)
+                componentId = parseInt(target[2]);
+
+            var entity = IEditor.scene.entityById(entityId);
+            if (isNotNull(entity))
+                IEditor.Instance.selectEntity(entity, componentId);
+        }
+        else if (ui.cmd === "delete")
+        {
+            var node = $.ui.fancytree.getNode(element);
+            var target = node.key.split("-");
+            var entityId = -1;
+            var componentId = -1;
+            if (target.length >= 2)
+                entityId = parseInt(target[1]);
+            if (target.length >= 3)
+                componentId = parseInt(target[2]);
+
+            var entStr = IEditor.scene.entityString;
+            var compStr = IEditor.scene.componentString;
+            var entity = IEditor.scene.entityById(entityId);
+            if (isNull(entity))
+                return;
+            else
+            {
+                if (componentId !== -1)
+                {
+                    var componentPtr = entity.componentById(componentId);
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveComponent",
+                        "Remove " + compStr,
+                        "Are you sure that you want to remove this " + compStr + "?",
+                        function(){
+                            IEditor.Instance.removeComponentCommand(componentPtr);
+                        });
+
+                    confirmDialog.exec();
+                }
+                else
+                {
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveEntity",
+                        "Remove " + entStr + " with ID " + entityId,
+                        "Are you sure that you want to remove this " + entStr + "?",
+                        function(){
+                            IEditor.Instance.removeEntityCommand(entity);
+                        });
+
+                    confirmDialog.exec();
+                }
+            }
+        }
+    },
+
+    onAddEntityClicked : function()
+    {
+        var sceneTree = $("#scene-tree-holder");
+        if (isNull(sceneTree))
+            return;
+
+        var inputNewEntityId = "input-newEntityName";
+        var checkboxIsLocalId = "checkbox-localEntity";
+        var buttons = {
+            "Add entity" : function()
+            {
+                var componentNames = [];
+                var droppedComponents = $(this).find("div[id^='dropped-']");
+                for (var i = 0; i < droppedComponents.length; i++)
+                    componentNames.push($(droppedComponents[i]).data("dropData"));
+
+                var entityName = $("#" + inputNewEntityId).val();
+                var isLocal = $("#" + checkboxIsLocalId).is(":checked");
+                IEditor.Instance.addEntityCommand(componentNames, entityName, !isLocal);
+
+                $(this).dialog("close");
+                $(this).remove();
+            },
+            "Cancel" : function()
+            {
+                $(this).dialog("close");
+                $(this).remove();
+            }
+        };
+
+        var dialog = new ModalDialog("AddEntity", "Add new entity", 550, 300);
+        dialog.appendInputBox(inputNewEntityId, "Name this entity (optional)", "string");
+        dialog.appendInputBox(checkboxIsLocalId, "Create local entity", "checkbox");
+
+        var componentNames = [];
+        var registeredComponents = IEditor.scene.registeredComponents();
+
+        for (var i = 0; i < registeredComponents.length; i++)
+            componentNames.push(registeredComponents[i].TypeName);
+
+        dialog.appendDraggableList("draggableList-components", "Registered components", componentNames);
+        dialog.appendDroppable("droppable-components", "Drag the components you want to be included upon creation of this entity", IEditor.scene.doesAllowSameNamedComponents());
+        dialog.addButtons(buttons);
+        dialog.exec();
+    },
+
+    onSTExpColClicked : function()
+    {
+        var sceneTree = $("#scene-tree-holder");
+        if (isNull(sceneTree))
+            return;
+
+        var toggle = $(this).data("toggle");
+        var newToggle = !toggle;
+        sceneTree.fancytree("getRootNode").visit(function(node){
+            node.setExpanded(newToggle);
+        });
+
+        $(this).data("toggle", newToggle);
+    }
+});
+
+var ECEditorPanel = IPanel.$extend(
+{
+    __init__ : function(options)
+    {
+        this.$super("ec editor", options);
+        this.accordionHistory = {};
+        this.componentEvents = [];                         // Array of EventWrapper
+        this.currentObject = null;
+
+        this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
+        this.fontConfig = options.fontConfig || {};
+    },
+
+    initUi : function()
+    {
+        this.$super();
+
+        var accordionStyle = $("<style/>"); // #F7EEDC
+        accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
+        .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
+        $("head").append(accordionStyle);
+
+        this.ui.entityLabel = $("<div/>");
+        this.ui.entityLabel.attr("id", "editor-entity-label");
+        this.ui.entityLabel.css({
+            "position" : "relative",
+            "top" : 5,
+            "left" : 10,
+            "width" : "94%",
+            "height" : "20px",
+            "color" : "white",
+            "font-family" : "Verdana",
+            "font-size" : "16px",
+            "text-align" : "center",
+            "border" : 3,
+            "padding" : "10px 0px",
+            "margin" : "0 0 10px 0",
+            "background" : "steelblue"
+        });
+        this.ui.entityLabel.html(this.noSelectionStr);
+
+        this.ui.upButton = $("<button/>", {
+            id : "up-parent-button"
+        });
+        this.ui.upButton.css({
+            "position" : "absolute",
+            "top" : 10,
+            "left" : 20,
+            "font-size" : "10px",
+            "z-index" : 5,
+        })
+        this.ui.upButton.html("Up");
+        this.ui.upButton.button({
+            icons : {
+                primary : "ui-icon-arrowreturnthick-1-n"
+            }
+        });
+
+        this.ui.addCompButton = $("<button/>", {
+            id : "ec-add-component-button"
+        });
+        this.ui.addCompButton.css({
+            "position" : "relative",
+            // "margin-left" : 10,
+            "font-size" : "11px",
+            "width": "100%"
+        }).css(this.fontConfig);
+        this.ui.addCompButton.html("Create Component...");
+        this.ui.addCompButton.button({
+            icons : {
+                primary : "ui-icon-plusthick"
+            }
+        });
+
+        this.ui.expColButton = $("<button/>", {
+            id : "ec-expand-collapse-button"
+        });
+        this.ui.expColButton.data("toggle", false);
+        this.ui.expColButton.css({
+            "position" : "relative",
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
+        this.ui.expColButton.html("Expand / Collapse");
+        this.ui.expColButton.button({
+            icons : {
+                primary : "ui-icon-carat-2-n-s"
+            }
+        });
+
+        this.ui.editCompButton = $("<button/>", {
+            id : "ec-edit-component-button"
+        });
+        this.ui.editCompButton.data("toggle", false);
+        this.ui.editCompButton.css({
+            "position" : "relative",
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
+        this.ui.editCompButton.html("Edit...");
+        this.ui.editCompButton.button({
+            icons : {
+                primary : "ui-icon-pencil",
+                secondary : "ui-icon-locked"
+            }
+        });
+
+        this.ui.buttonsHolder = $("<div/>");
+        this.ui.buttonsHolder.attr("id", "editor-buttons");
+        this.ui.buttonsHolder.css({
+            "position" : "relative",
+            "overflow" : "hidden",
+            "top" : 5,
+            "left" : 10,
+            "width" : "95%",
+            "padding" : 0
+        });
+
+        this.ui.buttonsHolder.append(this.ui.addCompButton);
+        this.ui.buttonsHolder.append(this.ui.expColButton);
+        this.ui.buttonsHolder.append(this.ui.editCompButton);
+
+        this.ui.panel.append(this.ui.upButton);
+        this.ui.panel.append(this.ui.entityLabel);
+        this.ui.panel.append(this.ui.buttonsHolder);
+
+        this.ui.holder = $("<div/>");
+        this.ui.holder.attr("id", "editor-component-accordions");
+        this.ui.holder.css({
+            "position"   : "relative",
+            "overflow"   : "auto",
+            "top"        : 15,
+            "left"       : 10,
+            "width"      : "95%",
+            "height"     : this.componentHolderHeight(),
+            "font-size"  : "10px",
+            "padding"    : 0
+        });
+
+        this.ui.panel.append(this.ui.holder);
+
+        this.ui.upButton.hide();
+        this.ui.buttonsHolder.hide();
+        this.ui.panel.hide();
+
+        IEditor.Instance.addWidget(this.ui.panel, "right");
+
+        this.ui.upButton.click(this, this.onUpButtonClicked);
+        this.ui.addCompButton.click(this, this.onAddComponentClicked);
+        this.ui.editCompButton.click(this, this.onEditButtonClicked);
+        this.ui.expColButton.click(this, this.onECExpColClicked);
+    },
+
+    enable : function()
+    {
+
+    },
+
+    disable : function()
+    {
+
+    },
+
+    componentHolderHeight : function()
+    {
+        return this.ui.panel.height() - (
+            this.ui.entityLabel.height()
+            + this.ui.buttonsHolder.height()
+            + parseInt(this.ui.upButton.css("top"))
+            + parseInt(this.ui.entityLabel.css("top"))
+            + parseInt(this.ui.buttonsHolder.css("top"))
+            + parseInt(this.ui.entityLabel.css("margin-bottom"))
+            + parseInt(this.ui.entityLabel.css("padding-top"))
+            + parseInt(this.ui.entityLabel.css("padding-bottom")));
+    },
+
+    onUpButtonClicked : function()
+    {
+        var entityId = $(this).data("targetEntity");
+        if (isNull(entityId))
+            return;
+
+        var entityPtr = IEditor.scene.entityById(entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var parentId = entityPtr.parentId();
+        if (isNull(parentId))
+            return;
+
+        var parentEntity = IEditor.scene.entityById(parentId);
+        if (isNull(parentEntity))
+            return;
+
+        IEditor.Instance.selectEntity(parentEntity);
+    },
+
+    onAddComponentClicked : function()
+    {
+        var entityId = $(this).data("targetEntity");
+        if (isNull(entityId))
+            return;
+
+        var entityPtr = IEditor.scene.entityById(entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var comps = [];
+        var registeredComponents = IEditor.scene.registeredComponents();
+        for (var i = 0; i < registeredComponents.length; i++)
+            comps.push({
+                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
+                value : registeredComponents[i].TypeId
+            });
+
+        var dialog = new ModalDialog("AddComponent", "Add new component", 450, 300);
+        dialog.appendComboBox("combobox-componentList", "Select component type:   ", comps);
+        dialog.appendInputBox("input-newComponentName", "Name this component (optional):", "string");
+        dialog.appendInputBox("checkbox-local", "Create local component:", "checkbox");
+        dialog.appendInputBox("checkbox-temporary", "Temporary:", "checkbox");
+
+        var buttons = {
+            "Add component" : function()
+            {
+                var inputCompName = $("#input-newComponentName");
+                var compTypeName = $("#combobox-componentList").find(":selected").text();
+                var compTypeId = $("#combobox-componentList").find(":selected").val();
+                var compName = $("#input-newComponentName").val();
+                var isLocal = $("#checkbox-local").is(":checked");
+                var isTemporary = $("#checkbox-temporary").is(":checked");
+                if (compTypeName === "Dynamic")
+                    compTypeName = "DynamicComponent";
+                compTypeName = IEditor.scene.componentNameWithPrefix(compTypeName);
+
+                var hasComponent = entityPtr.hasComponent(compTypeName, compName);
+                if (hasComponent)
+                {
+                    inputCompName.addClass(Utils.invalidDataName);
+                    return;
+                }
+
+                IEditor.Instance.addComponentCommand(entityPtr.id, compTypeName, compName, isLocal, isTemporary);
+
+                $(this).dialog("close");
+                $(this).remove();
+            },
+            "Cancel" : function()
+            {
+                $(this).dialog("close");
+                $(this).remove();
+            }
+        };
+
+        dialog.addButtons(buttons);
+        dialog.exec();
+    },
+
+    onEditButtonClicked : function()
+    {
+        var toggle = $(this).data("toggle");
+        if (isNull(toggle))
+            return;
+
+        toggle = !toggle;
+
+        $(this).data("toggle", toggle);
+
+        var editButtonSecondIcon = toggle ? "ui-icon-unlocked" : "ui-icon-locked";
+        $(this).button("option", {
+            icons : {
+                primary : "ui-icon-pencil",
+                secondary : editButtonSecondIcon
+            }
+        });
+
+        var addAttrButtons = $("button[id^='addAttrButton-']");
+        for (var i = addAttrButtons.length - 1; i >= 0; i--)
+            if (toggle === true)
+                $(addAttrButtons[i]).show("slow");
+            else
+                $(addAttrButtons[i]).hide("slow");
+
+        var removeAttrButtons = $("button[id^='removeAttrButton-']");
+        for (var i = removeAttrButtons.length - 1; i >= 0; i--)
+            if (toggle === true)
+                $(removeAttrButtons[i]).show("slow");
+            else
+                $(removeAttrButtons[i]).hide("slow");
+
+        var removeButtons = $("button[id^='removeButton-']");
+        for (var i = removeButtons.length - 1; i >= 0; i--)
+            if (toggle === true)
+                $(removeButtons[i]).show("slow");
+            else
+                $(removeButtons[i]).hide("slow");
+
+        var editButtons = $("button[id^='editButton-']");
+        for (var i = editButtons.length - 1; i >= 0; i--)
+            if (toggle === true)
+                $(editButtons[i]).show("slow");
+            else
+                $(editButtons[i]).hide("slow");
+    },
+
+    onECExpColClicked : function()
+    {
+        var accordions = $("div[id^='accordion-']");
+        if (accordions.length == 0)
+            return;
+
+        var newToggle = false;
+        for (var i = 0; i < accordions.length; i++)
+        {
+            var isActive = $(accordions[i]).accordion("option", "active");
+            if (isActive === false)
+            {
+                newToggle = true;
+                break;
+            }
+        }
+
+        for (var i = 0; i < accordions.length; i++)
+            $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
+    },
+
+    onEntitySelected : function(entityPtr, activeComponent)
+    {
+        if (isNotNull(this.currentObject))
+            this.saveAccordionHistory();
+
+        this.ui.holder.off();
+        this.ui.holder.empty();
+        this.ui.upButton.data("targetEntity", -1);
+        this.ui.addCompButton.data("targetEntity", -1);
+
+        if (isNull(entityPtr))
+        {
+            this.currentObject = null;
+            this.ui.entityLabel.html(this.noSelectionStr);
+
+            this.ui.upButton.hide();
+            this.ui.buttonsHolder.hide();
+        }
+        else
+        {
+            this.currentObject = entityPtr;
+            this.ui.upButton.data("targetEntity", entityPtr.id);
+            this.ui.addCompButton.data("targetEntity", entityPtr.id);
+            this.populateComponents(entityPtr, activeComponent);
+
+            this.ui.buttonsHolder.show();
+            if (isNotNull(entityPtr.parentId()))
+                this.ui.upButton.show();
+            else
+                this.ui.upButton.hide();
+        }
+    },
+
+
+    populateComponents : function(entityPtr, activeComponent)
+    {
+        this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr));
+
+        for (var i = this.componentEvents.length - 1; i >= 0; i--)
+            IEditor.scene.unsubscribe(this.componentEvents[i]);
+        this.componentEvents.length = 0;
+
+        var components = entityPtr.components();
+        if (isNotNull(entityPtr.attributes))
+            this.appendAccordionForComponent(entityPtr, true, false);
+
+        var accordionHistory = this.getAccordionHistory(entityPtr.id);
+        for (var i = 0; i < components.length; ++i)
+        {
+            var compId = parseInt(components[i].id);
+            var compHistoryIndex = accordionHistory.indexOf(compId);
+            var activateComp = ((compId === activeComponent) || compHistoryIndex !== -1);
+            this.appendAccordionForComponent(components[i], activateComp);
+        }
+
+        var allowedComps = IEditor.scene.registeredComponents(entityPtr.typeName);
+        if (allowedComps.length === 0)
+        {
+            this.ui.editCompButton.button("disable");
+            this.ui.addCompButton.button("disable");
+        }
+        else
+        {
+            this.ui.editCompButton.button("enable");
+            this.ui.addCompButton.button("enable");
+        }
+
+        this.ui.holder.on("change", "input", this.onAttributesEdit);
+        this.ui.holder.on("keydown", "input", function(e) { e.stopPropagation(); });
+        this.ui.holder.on("change", "select", this.onAttributesEdit);
+    },
+
+    appendAccordionForComponent : function(componentPtr, setActive, canBeRemoved)
+    {
+        if (isNull(componentPtr))
+            return;
+        if (isNull(setActive))
+            setActive = false;
+        if (isNull(canBeRemoved))
+            canBeRemoved = true;
+        var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
+
+        var accordionId = "accordion-" + entAndCompSuffix;
+        var accordion = $("<div/>", {
+            id : accordionId
+        });
+        accordion.data("targetComponent", componentPtr.id);
+
+        var contentHolder = $("<div/>");
+        var header = $("<div class='h3'/>");
+
+        var addAttrButtonId = "addAttrButton-" + entAndCompSuffix;
+        var addAttrButton = $("<button/>", {
+            id : addAttrButtonId,
+            title : "Add an attribute to this component"
+        });
+        addAttrButton.data("parentAccordion", accordionId);
+        addAttrButton.css("float", "right");
+        addAttrButton.button({
+            icons : {
+                primary : "ui-icon-plusthick"
+            },
+            text : false
+        });
+
+        var removeButtonId = "removeButton-" + entAndCompSuffix;
+        var removeButton = $("<button/>", {
+            id : removeButtonId,
+            title : "Remove this " + IEditor.scene.componentString
+        });
+        removeButton.data("parentAccordion", accordionId);
+        removeButton.css("float", "right");
+        removeButton.button({
+            icons : {
+                primary : "ui-icon-closethick"
+            },
+            text : false
+        });
+
+        var editButton = null;
+        if (IEditor.Instance.type === "xml3d")
+        {
+            var editButtonId = "editButton-" + componentPtr.id;
+            editButton = $("<button/>", {
+                id : editButtonId,
+                title : "Edit this element"
+            });
+            editButton.data("parentAccordion", accordionId);
+            editButton.css("float", "right");
+            editButton.button({
+                icons : {
+                    primary : "ui-icon-pencil"
+                },
+                text : false
+            });
+        }
+
+        var editButtonsVisible = this.ui.editCompButton.data("toggle");
+        if (!editButtonsVisible)
+        {
+            addAttrButton.hide();
+            removeButton.hide();
+            if (isNotNull(editButton))
+                editButton.hide();
+        }
+
+        var compNameNoEC = IEditor.scene.componentNameInHumanFormat(componentPtr.typeName);
+        header.html(compNameNoEC + (componentPtr.getName() === "" ? "" : " (" + componentPtr.getName() + ")"));
+
+        var content = $("<div/>").css(
+        {
+            "padding" : "0px 0px 0px 10px"
+        });
+
+        var attributes = componentPtr.attributes();
+
+        if (attributes.length != 0)
+        {
+            var table = $("<table/>", {
+                id : "table-" + entAndCompSuffix
+            });
+
+            table.data("componentData", {
+                parentCompId : componentPtr.id,
+                parentEntityId : componentPtr.parentId()
+            });
+
+            for (var attr = 0; attr < attributes.length; attr++)
+            {
+                var tableRow = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributes[attr].name, attributes[attr]);
+                if (tableRow != null)
+                    table.append(tableRow);
+            }
+
+            content.append(table);
+        }
+        // else
+        //     content.html($("<em/>").html("Nothing to edit for this component"));
+
+        if (componentPtr.isDynamic())
+        {
+            this.componentEvents.push(componentPtr.onAttributeAdded(this, this.onAttributeCreate));
+            this.componentEvents.push(componentPtr.onAttributeAboutToBeRemoved(this, this.onAttributeRemove));
+        }
+
+        if (canBeRemoved)
+        {
+            header.append(removeButton);
+            if (isNotNull(editButton))
+                header.append(editButton);
+        }
+        if (componentPtr.isDynamic())
+            header.append(addAttrButton);
+
+        contentHolder.append(header);
+        contentHolder.append(content);
+
+        accordion.append(contentHolder);
+
+        this.ui.holder.append(accordion);
+        accordion.accordion({
+            header : "> div > .h3",
+            collapsible : true,
+            heightStyle : "content",
+            active : (setActive ? 0 : false)
+        });
+        accordion.addClass("accStripe");
+        addAttrButton.tooltip({
+            track : true
+        });
+        removeButton.tooltip({
+            track : true
+        });
+        if (isNotNull(editButton))
+            editButton.tooltip({
+                track : true
+            });
+
+        addAttrButton.click(function(event)
+        {
+            event.stopPropagation();
+            event.preventDefault();
+
+            var attrs = new Array();
+            var dialog = new ModalDialog("addAttribute", "Add new attribute", 450, 250);
+            var attributeIds = IEditor.scene.attributeTypeIds();
+            for (var i = 0; i < attributeIds.length; i++)
+                attrs.push({
+                    name : IEditor.scene.attributeTypeToName(attributeIds[i]),
+                    value : attributeIds[i]
+                });
+
+            dialog.appendComboBox("combobox-attributeList", "Select attribute type:", attrs);
+            dialog.appendInputBox("input-attributeName", "Attribute name:", "string");
+            var buttons = {
+                "Add attribute" : function()
+                {
+                    var attrTypeElem = $("#combobox-attributeList");
+                    var attrNameElem = $("#input-attributeName");
+
+                    var attrTypeName = attrTypeElem.find(":selected").text();
+                    var attrTypeId = parseInt(attrTypeElem.find(":selected").val());
+                    var attrName = attrNameElem.val();
+
+                    if (isNull(attrName) || attrName === "")
+                    {
+                        attrNameElem.addClass(Utils.invalidDataName);
+                        return;
+                    }
+
+                    if (componentPtr.isDynamic())
+                    {
+                        if (!IEditor.Instance.addAttributeCommand(componentPtr, attrTypeId, attrName))
+                        {
+                            attrNameElem.addClass(Utils.invalidDataName);
+                            return;
+                        }
+                    }
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            }
+
+            dialog.addButtons(buttons);
+            dialog.exec();
+
+        });
+
+        removeButton.click( function(event)
+        {
+            event.stopPropagation();
+            event.preventDefault();
+
+            var accordionId = $(this).data("parentAccordion");
+            if (isNotNull(accordionId))
+            {
+                var entityId = parseInt(accordionId.split("-")[1]);
+                var componentId = parseInt(accordionId.split("-")[2]);
+                var entityPtr = IEditor.scene.entityById(entityId);
+                if (isNotNull(entityPtr))
+                {
+                    var componentPtr = entityPtr.componentById(componentId);
+                    var compStr = IEditor.scene.componentString;
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveComponent",
+                        "Remove " + compStr,
+                        "Are you sure that you want to remove this " + compStr + "?",
+                        function()
+                        {
+                            IEditor.Instance.removeComponentCommand(componentPtr);
+                        }
+                    );
+
+                    confirmDialog.exec();
+
+                }
+            }
+        });
+
+        if (isNotNull(editButton))
+            editButton.click( function(event)
+            {
+                event.stopPropagation();
+                event.preventDefault();
+
+                var elementId = parseInt($(this).attr("id").split("-")[1]);
+                var entityPtr = IEditor.scene.entityById(elementId);
+                if (isNotNull(entityPtr))
+                    IEditor.Instance.selectEntity(entityPtr);
+            });
+    },
+
+    createRowsForAttribute : function (entityId, componentId, attrName, attributePtr)
+    {
+        var element = null;
+        var attributeValue = attributePtr.get();
+
+        if (isNull(entityId))
+            entityId = componentId;
+
+        var attributeTypeId = attributePtr.typeId;
+        var isDynamic = attributePtr.owner.isDynamic();
+        var jsType = typeof(attributeValue);
+        var inputType = (jsType === "boolean" ? "checkbox" : "input");
+        var idOfElements = entityId + "-" + componentId + "-" + attrName;
+
+        var tableBody = $("<tbody/>", {
+            id : "tableBody-" + idOfElements
+        });
+
+        var tableRow = $("<tr/>").css(Utils.attributeTableRowStyle);
+        var removeAttrColumn = $("<td/>");
+        removeAttrColumn.css("minWidth", "1px");
+
+        var removeAttrButton = $("<button/>", {
+            id : "removeAttrButton-" + idOfElements
+        });
+        removeAttrButton.css("float", "left");
+        removeAttrButton.button({
+            icons : {
+                primary : "ui-icon-closethick"
+            },
+            text : false
+        });
+
+        var editButtonsVisible = this.ui.editCompButton.data("toggle");
+        if (!editButtonsVisible)
+            removeAttrButton.hide();
+
+        removeAttrButton.click( function()
+        {
+            var confirmDialog = ModalDialog.confirmationDialog(
+                "RemoveAttribute",
+                "Remove attribute named " + attributePtr.name,
+                "Are you sure you want to remove this attribute?",
+                function(){
+                    var compPtr = attributePtr.owner;
+                    if (isNotNull(compPtr))
+                        IEditor.Instance.removeAttributeCommand(attributePtr);
+                }
+            );
+
+            confirmDialog.exec();
+        })
+
+        var attrNameColumn = $("<td/>", {id : "label-" + idOfElements}).css(Utils.attributeTableColumnStyle);
+        if (!isDynamic)
+            attrNameColumn.attr("colspan", 2);
+
+        var elementColumn = $("<td/>").css(Utils.attributeTableColumnStyle);
+        attrNameColumn.html($("<strong/>").html(attrName));
+
+        if (IEditor.scene.isAttributeAtomic(attributeTypeId))
+        {
+            element = $("<input/>", {
+                id : idOfElements,
+                type : inputType,
+                value : attributeValue,
+                checked : attributeValue
+            });
+
+            element.data("attrData", {
+                name : attrName,
+                type : jsType,
+                typeId : attributeTypeId,
+                parentCompId : componentId,
+                parentEntityId : entityId,
+            });
+        }
+
+        if (element != null)
+            elementColumn.append(element);
+        if (isDynamic)
+        {
+            removeAttrColumn.append(removeAttrButton);
+            tableRow.append(removeAttrColumn);
+        }
+
+        tableRow.append(attrNameColumn);
+        tableRow.append(elementColumn);
+        tableBody.append(tableRow);
+
+        // Fill complex elements (Transform, Vector2, Vector3 etc.)
+        if (IEditor.scene.isAttributeTransform(attributeTypeId))
+        {
+            var labels = ["position x", "y", "z", "rotation x", "y", "z", "scale x", "y", "z"];
+            var comps = ["x", "y", "z"];
+            for (var i = 0; i < 9; i++)
+            {
+                // pos for i = 0..2, rot for i = 3..5, scale for i = 6..8
+                var varName = (i < 3 ? "pos" : (i < 6) ? "rot" : "scale");
+                // x for i = 0, 3, 6 | y for i = 1, 4, 7 | z for i = 2, 5, 8
+                var xyz = comps[((i >= 3  && i < 6) ? i - 3 : (i >= 6 ? i - 6 : i))];
+
+                var transformRow = $("<tr/>").css(Utils.attributeTableRowStyle);
+                var transformAttrCol = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
+                var transformElemCol = $("<td/>").css(Utils.attributeTableColumnStyle);
+
+                transformAttrCol.html(labels[i]);
+                var inputElem = $("<input/>", {
+                    id : idOfElements + "-" + varName + "-" + xyz,
+                    type : "number",
+                    step : "1",
+                    value : attributeValue[varName][xyz]
+                });
+
+                if (i >= 6)
+                    inputElem.attr("min", 0.0);
+
+                inputElem.data("attrData", {
+                    name : attrName,
+                    type : jsType,
+                    typeId : attributeTypeId,
+                    parentCompId : componentId,
+                    parentEntityId : entityId,
+                    transformComp : varName,
+                    axis : xyz
+                })
+
+                transformElemCol.append(inputElem);
+                transformRow.append(transformAttrCol);
+                transformRow.append(transformElemCol);
+                tableBody.append(transformRow);
+            }
+        }
+        else if (IEditor.scene.isAttributeTuple(attributeTypeId))
+        {
+            var labels = new Array();
+            if (!IEditor.scene.isAttributeColor(attributeTypeId))
+                labels = ["x", "y", "z", "w"];
+            else
+                labels = ["r", "g", "b", "a"];
+
+            var vec2or3or4orQuat = IEditor.scene.isAttributeTuple(attributeTypeId);
+
+            for (var i = 0; i < vec2or3or4orQuat; i++)
+            {
+                var vecRow = $("<tr/>").css(Utils.attributeTableRowStyle);
+                var vecAttr = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
+                var vecElem = $("<td/>").css(Utils.attributeTableColumnStyle);
+
+                vecAttr.html(labels[i]);
+                var inputElem = $("<input/>", {
+                    id : idOfElements + "-" + labels[i],
+                    type : "number",
+                    step : "1",
+                    value : attributeValue[labels[i]]
+                });
+
+                inputElem.data("attrData",{
+                    name : attrName,
+                    type : jsType,
+                    typeId : attributeTypeId,
+                    parentCompId : componentId,
+                    parentEntityId : entityId,
+                    axis : labels[i]
+                });
+
+                vecElem.append(inputElem);
+                vecRow.append(vecAttr);
+                vecRow.append(vecElem);
+                tableBody.append(vecRow);
+            }
+        }
+        else if (IEditor.scene.isAttributeArray(attributeTypeId))
+        {
+            for (var i = 0; i <= attributeValue.length; i++)
+            {
+                var arrayRow = this.createArrayRow(attributePtr, attributeValue, i);
+                tableBody.append(arrayRow);
+            }
+
+            tableBody.data("arrayLength", attributeValue.length);
+        }
+        else if (IEditor.scene.isAttributeEnum(attributeTypeId))
+        {
+            var values = attributePtr.validValues();
+            if (isNotNull(values))
+            {
+                var selectElement = $("<select/>", {
+                    id : idOfElements
+                });
+                selectElement.data("attrData", {
+                    name : attrName,
+                    type : jsType,
+                    typeId : attributeTypeId,
+                    parentCompId : componentId,
+                    parentEntityId : entityId,
+                });
+
+                for (var i = 0; i < values.length; i++)
+                {
+                    var option = $("<option/>", {
+                        value : values[i]
+                    });
+
+                    option.html(values[i]);
+                    selectElement.append(option);
+                }
+
+                selectElement.appendTo(elementColumn);
+            }
+        }
+
+        return tableBody;
+    },
+
+    createArrayRow : function(attributePtr, attributeValue, arrayIndex)
+    {
+        var entityId = attributePtr.owner.parentId();
+        var componentId = attributePtr.owner.id;
+        var idOfElement = entityId + "-" + componentId + "-" + attributePtr.name + "-" + arrayIndex;
+
+        var arrayRow = $("<tr/>", {
+            id : "attributeRow-" + idOfElement
+        });
+        arrayRow.css(Utils.attributeTableRowStyle);
+        var arrayLabel = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
+        var arrayElem = $("<td/>").css(Utils.attributeTableColumnStyle);
+
+        var attrName = attributePtr.name;
+        var attrValue = attributeValue[arrayIndex];
+        var attributeTypeId = attributePtr.typeId;
+        var jsType = typeof(attributeValue);
+
+        arrayLabel.html("[" + arrayIndex + "]");
+        var inputElem = $("<input/>", {
+            id : idOfElement,
+            type : "input",
+            value : (isNull(attrValue) ? "" : attrValue)
+        });
+
+        inputElem.data("attrData", {
+            name : attrName,
+            type : jsType,
+            typeId : attributeTypeId,
+            parentCompId : componentId,
+            parentEntityId : entityId,
+            index : arrayIndex
+        })
+
+        arrayElem.append(inputElem);
+        arrayRow.append(arrayLabel);
+        arrayRow.append(arrayElem);
+
+        return arrayRow;
+    },
+
+    onEntityRemoved : function(entityPtr)
+    {
+        if (isNotNull(this.currentObject))
+        {
+            if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
+                this.onEntitySelected(null);
+        }
+    },
+
+    onComponentCreated : function(entityPtr, componentPtr)
+    {
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            this.appendAccordionForComponent(componentPtr);
+    },
+
+    onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            if (componentPtr.typeName === "Name")
+                this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr, true));
+
+        var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
+        $(accordionId).hide("fast", function()
+        {
+            $(accordionId).remove();
+        });
+    },
+
+    onAttributeCreate : function(componentPtr, attributePtr)
+    {
+        var suffix = componentPtr.parentId() + "-" + componentPtr.id;
+        var targetAccordion = $("#accordion-" + suffix);
+
+        var targetTable = $("#table-" + suffix);
+        var tableBody = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributePtr.name, attributePtr);
+        tableBody.appendTo(targetTable);
+
+        targetAccordion.accordion("refresh");
+    },
+
+    onAttributeRemove : function(componentPtr, attributeIndex, attributeName)
+    {
+        var suffixAccordion = componentPtr.parentId() + "-" + componentPtr.id;
+        var suffix = suffixAccordion + "-" + attributeName;
+        var targetBody = $("#tableBody-" + suffix);
+        targetBody.hide("fast", function()
+            {
+                targetBody.remove();
+                var accordionId = "#accordion-" + suffixAccordion;
+                $(accordionId).accordion("refresh");
+            }
+        );
+    },
+
+    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        if (isNotNull(this.currentObject))
+        {
+            if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
+            {
+                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+                if (componentPtr.typeName === "Name" && attributeName === "name")
+                    this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr));
+            }
+        }
+    },
+
+    onAttributesEdit : function()
+    {
+        var data = $(this).data("attrData");
+        var value = $(this).val();
+        var finalValue = null;
+
+        var name = data.name;
+        var type = data.type;
+        var typeId = data.typeId;
+        var entId = data.parentEntityId;
+        var compId = data.parentCompId;
+
+        var entity = IEditor.scene.entityById(entId);
+        if (isNull(entity))
+            return;
+
+        var component = entity.componentById(compId);
+        if (isNull(component))
+            return;
+
+        var attribute = component.attributeByName(name);
+        if (isNull(attribute))
+            return;
+
+        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
+        {
+            if (type === "boolean")
+                finalValue = $(this).is(":checked");
+            else if (type === "number")
+            {
+                if (isNaN(value))
+                {
+                    $(this).addClass(Utils.invalidDataName);
+                    return;
+                }
+                else
+                {
+                    $(this).removeClass(Utils.invalidDataName);
+                    finalValue = parseFloat(value);
+                }
+            }
+            else
+                finalValue = value;
+        }
+        else if (IEditor.scene.isAttributeTransform(typeId))
+        {
+            var transformComp = data.transformComp;
+            if (transformComp === "scale" && parseFloat($(this).val()) < 0.0)
+            {
+                $(this).addClass(Utils.invalidDataName);
+                return;
+            }
+            else
+                $(this).removeClass(Utils.invalidDataName);
+
+            var axis = data.axis;
+            var clone = attribute.get();
+            clone[transformComp][axis] = parseFloat($(this).val());
+            finalValue = clone;
+        }
+        else if (IEditor.scene.isAttributeTuple(typeId))
+        {
+            var axis = data.axis;
+            var clone = attribute.get();
+            clone[axis] = parseFloat($(this).val());
+            finalValue = clone;
+        }
+        else if (IEditor.scene.isAttributeArray(typeId))
+        {
+            var index = data.index;
+            var clone = attribute.get();
+            clone[index] = $(this).val();
+            finalValue = clone;
+        }
+        else
+            IEditor.scene.logError("[Editor]: Current type is not implemented yet! Type requested was: " + IEditor.scene.attributeTypeToName(typeId));
+
+        IEditor.Instance.changeAttributeCommand(attribute, finalValue);
+    },
+
+    onAttributesChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
+    {
+        if (!IEditor.Instance.isEditorEnabled())
+            return;
+
+        var attributePtr = component.attributeByName(attributeName);
+        var typeId = attributePtr.typeId;
+        var elementName = entity.id + "-" + component.id + "-" + attributeName;
+        if (isNull(elementName))
+            return;
+
+        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
+        {
+            if (IEditor.scene.isAttributeBool(typeId))
+            {
+                var value = attributeValue;
+                if (typeof(value) === "string")
+                    value = (value === "true" ? true : false);
+
+                $("#" + elementName).prop('checked', value);
+            }
+
+            $("#" + elementName).val(attributeValue);
+        }
+        else if (IEditor.scene.isAttributeTransform(typeId))
+        {
+            // WebTundra specific 'Transform' attribute
+            var xyz = ["x", "y", "z"];
+            for (var i = 0; i < 9; i++)
+            {
+                // pos for i = 0..2, rot for i = 3..5, scale for i = 6..8
+                var transformComp = (i < 3 ? "pos" : (i < 6) ? "rot" : "scale");
+                 // x for i = 0, 3, 6 | y for i = 1, 4, 7 | z for i = 2, 5, 8
+                var tuple = xyz[((i >= 3  && i < 6) ? i - 3 : (i >= 6 ? i - 6 : i))];
+
+                var extElementName = elementName + "-" + transformComp + "-" + tuple;
+                $("#" + extElementName).val(attributeValue[transformComp][tuple]);
+
+                if (i >= 6)
+                    $("#" + extElementName).removeClass(Utils.invalidDataName);
+            }
+        }
+        else if (IEditor.scene.isAttributeTuple(typeId))
+        {
+            var xyzw = [];
+            if (!IEditor.scene.isAttributeColor(typeId))
+                xyzw = ["x", "y", "z", "w"];
+            else
+                xyzw = ["r", "g", "b", "a"];
+
+            if (typeof(attributeValue) === "string")
+            {
+                var attrValue = attributeValue.split(" ");
+                for (var i = 0; i < attrValue.length; i++)
+                {
+                    var value = attrValue[i];
+                    var extElementName = elementName + "-" + xyzw[i];
+                    $("#" + extElementName).val(value);
+                }
+            }
+            else
+                for (var i = 0; i < xyzw.length; i++)
+                {
+                    var value = attributeValue[xyzw[i]];
+                    if (isNull(value))
+                        return;
+
+                    var extElementName = elementName + "-" + xyzw[i];
+                    $("#" + extElementName).val(value);
+                }
+        }
+        else if (IEditor.scene.isAttributeArray(typeId))
+        {
+            var arrayTableBody = $("tbody#tableBody-" + elementName);
+            if (arrayTableBody.length <= 0)
+                return;
+
+            var arrayLength = attributeValue.length;
+            for (var i = 0; i < arrayLength; i++)
+            {
+                var extElementName = elementName + "-" + i;
+                var element = $("input#" + extElementName);
+                // if there is a new item in AssetReferenceList, add new row for it
+                if (element.length <= 0)
+                {
+                    var newArrayElement = this.createArrayRow(attributePtr, attributeValue, i);
+                    arrayTableBody.append(newArrayElement);
+                }
+
+                element.val(attributeValue[i]);
+            }
+
+            var previousLength = arrayTableBody.data("arrayLength");
+            var difference = previousLength - arrayLength;
+
+            // Remove extra attribute elements
+            if (previousLength > arrayLength)
+            {
+                for (var i = previousLength; i >= arrayLength; i--)
+                {
+                    var extElementName = elementName + "-" + i;
+                    var elementToBeRemoved = $("tr#attributeRow-" + extElementName);
+                    if (elementToBeRemoved.length > 0)
+                        elementToBeRemoved.remove()
+                }
+            }
+
+            // Add an empty one for entering any subsequent asset refs
+            if (difference != 0)
+            {
+                var emptyArrayElement = this.createArrayRow(attributePtr, attributeValue, arrayLength);
+                arrayTableBody.append(emptyArrayElement);
+            }
+
+            arrayTableBody.data("arrayLength", arrayLength);
+        }
+    },
+
+    saveAccordionHistory : function()
+    {
+        var previousHistory = this.accordionHistory[this.currentObject.id];
+        if (isNotNull(previousHistory))
+            previousHistory.length = 0;
+
+        var history = this.accordionHistory[this.currentObject.id];
+        history = [];
+
+        var atLeastOneActive = false;
+        var accordions = $("div[id^='accordion-']");
+        for (var i = 0; i < accordions.length; i++)
+        {
+            var targetCompId = $(accordions[i]).data("targetComponent");
+            var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
+            if (isActive)
+                history.push($(accordions[i]).data("targetComponent"));
+        }
+
+        if (history.length !== 0)
+            this.accordionHistory[this.currentObject.id] = history;
+    },
+
+    getAccordionHistory : function(entityId)
+    {
+        return (isNull(this.accordionHistory[entityId]) ? [] : this.accordionHistory[entityId]);
+    },
+
+    onWindowResize : function(width, height)
+    {
+        this.$super(width, height);
+        this.ui.holder.css("height", this.componentHolderHeight());
+    }
+});
+
 var IEditor = IWrapper.$extend(
 /** @lends IEditor.prototype */
 {
@@ -1097,20 +2716,17 @@ var IEditor = IWrapper.$extend(
         */
         this.type = options.type || "";
 
-        this.ui = {};                                       // JSON
+        this.ui = {};
+        this.panels = {};
         this.enabled = false;
         this.isECEditor = false;
-        this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
         this.sceneEvents = [];
-        this.componentEvents = [];                         // Array of EventWrapper
 
         /**
             Transform editor instance
             @type TransformEditor
         */
         this.transformEditor = null;
-
-        this.accordionHistory = {};
 
         this.toggleEditorShortcut = options.toggleEditorShortcut || "shift+s";
         this.switchPanelsShortcut = options.switchPanelsShortcut || "shift+e";
@@ -1152,7 +2768,20 @@ var IEditor = IWrapper.$extend(
         this.registerMouseEventCallback(this, this._onMouseEvent);
         IEditor.scene = this.registerSceneObject();
 
+        this.registerPanel(new SceneTreePanel({
+            width: this.panelWidth,
+            height: this.panelHeight,
+            fontConfig: this.fontConfig
+        }));
+
+        this.registerPanel(new ECEditorPanel({
+            width: this.panelWidth,
+            height: this.panelHeight,
+            fontConfig: this.fontConfig
+        }));
+
         this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
+        this.registerResizeEventCallback(this, this._onResizeEvent);
     },
 
     /**
@@ -1448,13 +3077,6 @@ var IEditor = IWrapper.$extend(
         var invalidDataClass = $("<style/>");
         invalidDataClass.text(".invalidData { border : 2px solid red; }");
 
-        var menuItemsClass = $("<style/>");
-        menuItemsClass.text(".contextmenu-z { z-index: 5; font-size: 14px; }");
-
-        var accordionStyle = $("<style/>"); // #F7EEDC
-        accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
-        .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
-
         var undoListStyle = "#_toolkit-undoStackButtons .ui-selecting { background: #AAAAAA; } \
         #_toolkit-undoStackButtons .ui-selected { background: #BBBBBB; color: white; } \
         #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
@@ -1471,8 +3093,6 @@ var IEditor = IWrapper.$extend(
         undoStyleElem.append(undoListStyle);
 
         $("head").append(invalidDataClass);
-        $("head").append(menuItemsClass);
-        $("head").append(accordionStyle);
         $("head").append(undoStyleElem);
         $("head").append($("<style/>").append(treeStyle));
 
@@ -1481,245 +3101,45 @@ var IEditor = IWrapper.$extend(
 
         var toolbar = this.toolkit.getOrCreateToolbar(this.width() - this.panelWidth);
 
-        this.ui.sceneTree = {};
-        this.ui.ecEditor = {};
-
-        this.ui.sceneTree.panel = $("<div/>");
-        this.ui.sceneTree.panel.attr("id", "scenetree-panel");
-        this.ui.sceneTree.panel.css({
-            "position"          : "absolute",
-            "top"               : 0,
-            "left"              : 0,
-            "height"            : this.panelHeight,
-            "width"             : this.panelWidth,
-            "margin"            : 0,
-            "padding"           : 0,
-            "padding-top"       : 0,
-            "padding-bottom"    : 0,
-            "border"            : 0,
-            "border-left"       : "1px solid gray",
-            "overflow"          : "auto",
-            "color"             : "rgb(50,50,50)",
-            "background-color"  : "rgba(248,248,248, 0.5)",
-        });
-
-        this.ui.ecEditor.panel = $("<div/>");
-        this.ui.ecEditor.panel.attr("id", "editor-panel");
-        this.ui.ecEditor.panel.css({
-            "position"          : "absolute",
-            "top"               : 0,
-            "left"              : 0,
-            "height"            : this.panelHeight,
-            "width"             : this.panelWidth,
-            "margin"            : 0,
-            "padding"           : 0,
-            "padding-bottom"    : 0,
-            "border"            : 0,
-            "border-left"       : "1px solid gray",
-            "overflow"          : "none",
-            "font-family"       : "Courier New",
-            "font-size"         : "10pt",
-            "color"             : "rgb(50,50,50)",
-            "background-color"  : "rgba(248,248,248, 0.5)",
-        });
-
-        this.ui.sceneTree.addEntityButton = $("<button/>", {
-            id : "st-add-entity-button"
-        });
-        this.ui.sceneTree.addEntityButton.css({
-            "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "50%"
-        }).css(this.fontConfig);
-        this.ui.sceneTree.addEntityButton.html("Create Entity...");
-        this.ui.sceneTree.addEntityButton.button({
-            icons : {
-                primary : "ui-icon-plusthick"
-            }
-        });
-
-        this.ui.sceneTree.expColButton = $("<button/>", {
-            id : "st-expand-collapse-button"
-        });
-        this.ui.sceneTree.expColButton.data("toggle", false);
-        this.ui.sceneTree.expColButton.css({
-            "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "49%"
-        }).css(this.fontConfig);
-        this.ui.sceneTree.expColButton.html("Expand / Collapse");
-        this.ui.sceneTree.expColButton.button({
-            icons : {
-                primary : "ui-icon-carat-2-n-s"
-            }
-        });
-
-        this.ui.sceneTree.buttonsHolder = $("<div/>");
-        this.ui.sceneTree.buttonsHolder.attr("id", "scenetree-buttons");
-        this.ui.sceneTree.buttonsHolder.css({
-            "position" : "relative",
-            "overflow" : "auto",
-            "top" : 10,
-            "left" : 10,
-            "width" : "95%",
-            "padding" : 0
-        });
-
-        this.ui.sceneTree.holder = $("<div/>");
-        this.ui.sceneTree.holder.attr("id", "scene-tree-holder");
-        this.ui.sceneTree.holder.css({
-            "position" : "relative",
-            "top" : 20,
-            "left" : 10,
-            "width" : "95%",
-            "height" : "90%",
-            "font-size" : "10px",
-        });
-
-        this.ui.ecEditor.entityLabel = $("<div/>");
-        this.ui.ecEditor.entityLabel.attr("id", "editor-entity-label");
-        this.ui.ecEditor.entityLabel.css({
-            "position" : "relative",
-            "top" : 5,
-            "left" : 10,
-            "width" : "94%",
-            "height" : "20px",
-            "color" : "white",
-            "font-family" : "Verdana",
-            "font-size" : "16px",
-            "text-align" : "center",
-            "border" : 3,
-            "padding" : "10px 0px",
-            "margin" : "0 0 10px 0",
-            "background" : "steelblue"
-        });
-        this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
-
-        this.ui.ecEditor.upButton = $("<button/>", {
-            id : "up-parent-button"
-        });
-        this.ui.ecEditor.upButton.css({
-            "position" : "absolute",
-            "top" : 10,
-            "left" : 20,
-            "font-size" : "10px",
-            "z-index" : 5,
-        })
-        this.ui.ecEditor.upButton.html("Up");
-        this.ui.ecEditor.upButton.button({
-            icons : {
-                primary : "ui-icon-arrowreturnthick-1-n"
-            }
-        });
-
-        this.ui.ecEditor.addCompButton = $("<button/>", {
-            id : "ec-add-component-button"
-        });
-        this.ui.ecEditor.addCompButton.css({
-            "position" : "relative",
-            // "margin-left" : 10,
-            "font-size" : "11px",
-            "width": "100%"
-        }).css(this.fontConfig);
-        this.ui.ecEditor.addCompButton.html("Create Component...");
-        this.ui.ecEditor.addCompButton.button({
-            icons : {
-                primary : "ui-icon-plusthick"
-            }
-        });
-
-        this.ui.ecEditor.expColButton = $("<button/>", {
-            id : "ec-expand-collapse-button"
-        });
-        this.ui.ecEditor.expColButton.data("toggle", false);
-        this.ui.ecEditor.expColButton.css({
-            "position" : "relative",
-            "font-size" : "11px",
-            "min-width": "100%"
-        }).css(this.fontConfig);
-        this.ui.ecEditor.expColButton.html("Expand / Collapse");
-        this.ui.ecEditor.expColButton.button({
-            icons : {
-                primary : "ui-icon-carat-2-n-s"
-            }
-        });
-
-        this.ui.ecEditor.editCompButton = $("<button/>", {
-            id : "ec-edit-component-button"
-        });
-        this.ui.ecEditor.editCompButton.data("toggle", false);
-        this.ui.ecEditor.editCompButton.css({
-            "position" : "relative",
-            "font-size" : "11px",
-            "min-width": "100%"
-        }).css(this.fontConfig);
-        this.ui.ecEditor.editCompButton.html("Edit...");
-        this.ui.ecEditor.editCompButton.button({
-            icons : {
-                primary : "ui-icon-pencil",
-                secondary : "ui-icon-locked"
-            }
-        });
-
-        this.ui.ecEditor.buttonsHolder = $("<div/>");
-        this.ui.ecEditor.buttonsHolder.attr("id", "editor-buttons");
-        this.ui.ecEditor.buttonsHolder.css({
-            "position" : "relative",
-            "overflow" : "hidden",
-            "top" : 5,
-            "left" : 10,
-            "width" : "95%",
-            "padding" : 0
-        });
-
-        this.ui.sceneTree.buttonsHolder.append(this.ui.sceneTree.addEntityButton);
-        this.ui.sceneTree.buttonsHolder.append(this.ui.sceneTree.expColButton);
-
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.addCompButton);
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.expColButton);
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.editCompButton);
-
-        this.ui.sceneTree.panel.append(this.ui.sceneTree.buttonsHolder);
-        this.ui.sceneTree.panel.append(this.ui.sceneTree.holder);
-
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.upButton);
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.entityLabel);
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.buttonsHolder);
-
-        this.ui.ecEditor.holder = $("<div/>");
-        this.ui.ecEditor.holder.attr("id", "editor-component-accordions");
-        this.ui.ecEditor.holder.css({
-            "position"   : "relative",
-            "overflow"   : "auto",
-            "top"        : 15,
-            "left"       : 10,
-            "width"      : "95%",
-            "height"     : this.componentHolderHeight(),
-            "font-size"  : "10px",
-            "padding"    : 0
-        });
-
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.holder);
-
-        this.ui.ecEditor.upButton.hide();
-        this.ui.ecEditor.buttonsHolder.hide();
-        this.ui.sceneTree.panel.hide();
-        this.ui.ecEditor.panel.hide();
         toolbar.hide();
 
-        this.addWidget(this.ui.sceneTree.panel, "right");
-        this.addWidget(this.ui.ecEditor.panel, "right");
         this.addWidget(toolbar, "top");
+    },
 
-        this.registerResizeEventCallback(this, this._onResizeEvent);
+    registerPanel : function(panel)
+    {
+        this.panels[panel.name] = panel;
+        panel.initUi();
 
-        this.createContextMenu();
-        this.ui.sceneTree.addEntityButton.click(this, this.onAddEntityClicked);
-        this.ui.sceneTree.expColButton.click(this, this.onSTExpColClicked);
-        this.ui.ecEditor.upButton.click(this, this.onUpButtonClicked);
-        this.ui.ecEditor.addCompButton.click(this, this.onAddComponentClicked);
-        this.ui.ecEditor.editCompButton.click(this, this.onEditButtonClicked);
-        this.ui.ecEditor.expColButton.click(this, this.onECExpColClicked);
+        this.toolkit.appendPanelButton(panel.name, panel.label);
+    },
+
+    onEntityCreated : function(entityPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntityCreated === "function")
+                panel.onEntityCreated(entityPtr);
+        }
+    },
+
+    onEntityRemoved : function(entityPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntityRemoved === "function")
+                panel.onEntityRemoved(entityPtr);
+        }
     },
 
     _onKeyEvent : function(keyEvent)
@@ -1811,50 +3231,18 @@ var IEditor = IWrapper.$extend(
         var taskbar = this.taskbar();
         var container = $("body");
 
-        this.ui.sceneTree.panel.css("height", panelHeight);
-        this.ui.ecEditor.panel.css("height", panelHeight);
-
-        if (isNotNull(container))
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
         {
-            if (this.ui.sceneTree.panel.is(":visible"))
-            {
-                this.ui.sceneTree.panel.position(
-                {
-                    my : "right top",
-                    at : "right top",
-                    of : container
-                });
-            }
-            if (this.ui.ecEditor.panel.is(":visible"))
-            {
-                this.ui.ecEditor.panel.position(
-                {
-                    my : "right top",
-                    at : "right top",
-                    of : container
-                });
-            }
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onWindowResize === "function")
+                panel.onWindowResize(width, panelHeight);
         }
-
-        this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
     },
 
     onUndoRedoStateChanged : function(undoItems, redoItems, total)
     {
         this.toolkit.onUndoRedoStateChanged(undoItems, redoItems, total);
-    },
-
-    componentHolderHeight : function()
-    {
-        return this.ui.ecEditor.panel.height() - (
-            this.ui.ecEditor.entityLabel.height()
-            + this.ui.ecEditor.buttonsHolder.height()
-            + parseInt(this.ui.ecEditor.upButton.css("top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("top"))
-            + parseInt(this.ui.ecEditor.buttonsHolder.css("top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("margin-bottom"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("padding-top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("padding-bottom")));
     },
 
     setSwitchPanelsShortcut : function(shortcut)
@@ -1865,238 +3253,6 @@ var IEditor = IWrapper.$extend(
     setToggleEditorShortcut : function(shortcut)
     {
         this.toggleEditorShortcut = shortcut;
-    },
-
-    onAddEntityClicked : function()
-    {
-        var sceneTree = $("#scene-tree-holder");
-        if (isNull(sceneTree))
-            return;
-
-        var inputNewEntityId = "input-newEntityName";
-        var checkboxIsLocalId = "checkbox-localEntity";
-        var buttons = {
-            "Add entity" : function()
-            {
-                var componentNames = [];
-                var droppedComponents = $(this).find("div[id^='dropped-']");
-                for (var i = 0; i < droppedComponents.length; i++)
-                    componentNames.push($(droppedComponents[i]).data("dropData"));
-
-                var entityName = $("#" + inputNewEntityId).val();
-                var isLocal = $("#" + checkboxIsLocalId).is(":checked");
-                IEditor.Instance.addEntityCommand(componentNames, entityName, !isLocal);
-
-                $(this).dialog("close");
-                $(this).remove();
-            },
-            "Cancel" : function()
-            {
-                $(this).dialog("close");
-                $(this).remove();
-            }
-        };
-
-        var dialog = new ModalDialog("AddEntity", "Add new entity", 550, 300);
-        dialog.appendInputBox(inputNewEntityId, "Name this entity (optional)", "string");
-        dialog.appendInputBox(checkboxIsLocalId, "Create local entity", "checkbox");
-
-        var componentNames = [];
-        var registeredComponents = IEditor.scene.registeredComponents();
-
-        for (var i = 0; i < registeredComponents.length; i++)
-            componentNames.push(registeredComponents[i].TypeName);
-
-        dialog.appendDraggableList("draggableList-components", "Registered components", componentNames);
-        dialog.appendDroppable("droppable-components", "Drag the components you want to be included upon creation of this entity", IEditor.scene.doesAllowSameNamedComponents());
-        dialog.addButtons(buttons);
-        dialog.exec();
-    },
-
-    onSTExpColClicked : function()
-    {
-        var sceneTree = $("#scene-tree-holder");
-        if (isNull(sceneTree))
-            return;
-
-        var toggle = $(this).data("toggle");
-        var newToggle = !toggle;
-        sceneTree.fancytree("getRootNode").visit(function(node){
-            node.setExpanded(newToggle);
-        });
-
-        $(this).data("toggle", newToggle);
-    },
-
-    onUpButtonClicked : function()
-    {
-        var entityId = $(this).data("targetEntity");
-        if (isNull(entityId))
-            return;
-
-        var entityPtr = IEditor.scene.entityById(entityId);
-        if (isNull(entityPtr))
-            return;
-
-        var parentId = entityPtr.parentId();
-        if (isNull(parentId))
-            return;
-
-        var parentEntity = IEditor.scene.entityById(parentId);
-        if (isNull(parentEntity))
-            return;
-
-        IEditor.Instance.selectEntity(parentEntity);
-    },
-
-    onAddComponentClicked : function()
-    {
-        var entityId = $(this).data("targetEntity");
-        if (isNull(entityId))
-            return;
-
-        var entityPtr = IEditor.scene.entityById(entityId);
-        if (isNull(entityPtr))
-            return;
-
-        var comps = [];
-        var registeredComponents = IEditor.scene.registeredComponents();
-        for (var i = 0; i < registeredComponents.length; i++)
-            comps.push({
-                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
-                value : registeredComponents[i].TypeId
-            });
-
-        var dialog = new ModalDialog("AddComponent", "Add new component", 450, 300);
-        dialog.appendComboBox("combobox-componentList", "Select component type:   ", comps);
-        dialog.appendInputBox("input-newComponentName", "Name this component (optional):", "string");
-        dialog.appendInputBox("checkbox-local", "Create local component:", "checkbox");
-        dialog.appendInputBox("checkbox-temporary", "Temporary:", "checkbox");
-
-        var buttons = {
-            "Add component" : function()
-            {
-                var inputCompName = $("#input-newComponentName");
-                var compTypeName = $("#combobox-componentList").find(":selected").text();
-                var compTypeId = $("#combobox-componentList").find(":selected").val();
-                var compName = $("#input-newComponentName").val();
-                var isLocal = $("#checkbox-local").is(":checked");
-                var isTemporary = $("#checkbox-temporary").is(":checked");
-                if (compTypeName === "Dynamic")
-                    compTypeName = "DynamicComponent";
-                compTypeName = IEditor.scene.componentNameWithPrefix(compTypeName);
-
-                var hasComponent = entityPtr.hasComponent(compTypeName, compName);
-                if (hasComponent)
-                {
-                    inputCompName.addClass(Utils.invalidDataName);
-                    return;
-                }
-
-                IEditor.Instance.addComponentCommand(entityPtr.id, compTypeName, compName, isLocal, isTemporary);
-
-                $(this).dialog("close");
-                $(this).remove();
-            },
-            "Cancel" : function()
-            {
-                $(this).dialog("close");
-                $(this).remove();
-            }
-        };
-
-        dialog.addButtons(buttons);
-        dialog.exec();
-    },
-
-    onEntityCreated : function(entityPtr)
-    {
-        var rootNode = null;
-        var parent = entityPtr.parentId();
-        if (isNull(parent))
-            rootNode = this.ui.sceneTree.holder.fancytree("getRootNode");
-        else
-            rootNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + parent);
-
-        this.createTreeItemForEntity(entityPtr, rootNode);
-    },
-
-    onEntityRemoved : function(entityPtr)
-    {
-        if (isNotNull(this.currentObject))
-        {
-            if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
-                this.selectEntity(null);
-        }
-        this.removeTreeItem(entityPtr);
-    },
-
-    onEditButtonClicked : function()
-    {
-        var toggle = $(this).data("toggle");
-        if (isNull(toggle))
-            return;
-
-        toggle = !toggle;
-
-        $(this).data("toggle", toggle);
-
-        var editButtonSecondIcon = toggle ? "ui-icon-unlocked" : "ui-icon-locked";
-        $(this).button("option", {
-            icons : {
-                primary : "ui-icon-pencil",
-                secondary : editButtonSecondIcon
-            }
-        });
-
-        var addAttrButtons = $("button[id^='addAttrButton-']");
-        for (var i = addAttrButtons.length - 1; i >= 0; i--)
-            if (toggle === true)
-                $(addAttrButtons[i]).show("slow");
-            else
-                $(addAttrButtons[i]).hide("slow");
-
-        var removeAttrButtons = $("button[id^='removeAttrButton-']");
-        for (var i = removeAttrButtons.length - 1; i >= 0; i--)
-            if (toggle === true)
-                $(removeAttrButtons[i]).show("slow");
-            else
-                $(removeAttrButtons[i]).hide("slow");
-
-        var removeButtons = $("button[id^='removeButton-']");
-        for (var i = removeButtons.length - 1; i >= 0; i--)
-            if (toggle === true)
-                $(removeButtons[i]).show("slow");
-            else
-                $(removeButtons[i]).hide("slow");
-
-        var editButtons = $("button[id^='editButton-']");
-        for (var i = editButtons.length - 1; i >= 0; i--)
-            if (toggle === true)
-                $(editButtons[i]).show("slow");
-            else
-                $(editButtons[i]).hide("slow");
-    },
-
-    onECExpColClicked : function()
-    {
-        var accordions = $("div[id^='accordion-']");
-        if (accordions.length == 0)
-            return;
-
-        var newToggle = false;
-        for (var i = 0; i < accordions.length; i++)
-        {
-            var isActive = $(accordions[i]).accordion("option", "active");
-            if (isActive === false)
-            {
-                newToggle = true;
-                break;
-            }
-        }
-
-        for (var i = 0; i < accordions.length; i++)
-            $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
     },
 
     /**
@@ -2119,8 +3275,10 @@ var IEditor = IWrapper.$extend(
 
         if (enabled)
         {
-            this.switchPanels(false);
-            this.populateScene();
+            // switch to scenetree
+            // call scenetreepanel enable
+            this.switchPanels("scenetree");
+            this.panels["scenetree"].enable();
             this.toolkit.show();
             this._onResizeEvent();
         }
@@ -2132,12 +3290,9 @@ var IEditor = IWrapper.$extend(
                 IEditor.scene.unsubscribe(this.sceneEvents[i]);
             this.sceneEvents.length = 0;
 
-            this.ui.sceneTree.holder.fancytree("destroy");
-            this.ui.sceneTree.holder.empty();
-            this.ui.sceneTree.panel.hide();
-
-            this.selectEntity(null);
-            this.ui.ecEditor.panel.hide();
+            this.panels["scenetree"].disable();
+            this.panels["eceditor"].onEntitySelected(null);
+            this.panels["eceditor"].hide();
 
             this.toolkit.hide();
 
@@ -2154,75 +3309,59 @@ var IEditor = IWrapper.$extend(
     togglePanels : function()
     {
         if (this.isEditorEnabled())
-            this.switchPanels(!this.isECEditor);
+            this.switchPanels(this.isECEditor ? "scenetree" : "eceditor");
     },
 
     /**
         Switch the desired panel
-        @param {boolean} ecPanel true to switch to ecPanel, false to switch to scene tree panel
+        @param {string} panelName to switch to
     */
 
-    switchPanels : function(ecPanel)
+    switchPanels : function(panelName)
     {
-        if (ecPanel)
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
         {
-            this.ui.ecEditor.panel.show();
-            this.ui.sceneTree.panel.hide();
+            if (panelsKeys[i] != panelName)
+                this.panels[panelsKeys[i]].hide();
         }
-        else
-        {
-            this.ui.ecEditor.panel.hide();
-            this.ui.sceneTree.panel.show();
-        }
+        this.panels[panelName].show();
 
-        this.isECEditor = ecPanel;
+        this.isECEditor = panelName == "eceditor";
         this._onResizeEvent();
-        this.toolkit.onPanelsSwitch(this.isECEditor);
+        this.toolkit.onPanelsSwitch(panelName);
     },
 
     /**
         Select an entity to be edited in the EC editor.<br>
         If an active component is provided, then that component will be expanded
         @param {EntityWrapper} entityPtr The entity to be edited
-        @param {ComponentWrapper} [activeComponent] The component to be expanded
+        @param {number} [activeComponent] The component id to be expanded
     */
     selectEntity : function(entityPtr, activeComponent)
     {
-        if (isNotNull(this.currentObject))
-            this.saveAccordionHistory();
-
-        this.ui.ecEditor.holder.off();
-        this.ui.ecEditor.holder.empty();
-        this.ui.ecEditor.upButton.data("targetEntity", -1);
-        this.ui.ecEditor.addCompButton.data("targetEntity", -1);
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntitySelected === "function")
+                panel.onEntitySelected(entityPtr, activeComponent);
+        }
 
         if (isNull(entityPtr))
         {
-            this.currentObject = null;
-            this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
-
-            this.ui.ecEditor.upButton.hide();
-            this.ui.ecEditor.buttonsHolder.hide();
-
             if (isNotNull(this.transformEditor))
                 this.transformEditor.clearSelection();
+            this.currentObject = null;
         }
         else
         {
-            this.switchPanels(true);
+            // switch to eceditor
+            this.switchPanels("eceditor");
             if (isNotNull(this.transformEditor))
                 this.transformEditor.setTargetEntity(entityPtr);
 
             this.currentObject = entityPtr;
-            this.ui.ecEditor.upButton.data("targetEntity", entityPtr.id);
-            this.ui.ecEditor.addCompButton.data("targetEntity", entityPtr.id);
-            this.populateComponents(entityPtr, activeComponent);
-
-            this.ui.ecEditor.buttonsHolder.show();
-            if (isNotNull(entityPtr.parentId()))
-                this.ui.ecEditor.upButton.show();
-            else
-                this.ui.ecEditor.upButton.hide();
         }
 
         this.toolkit.onEntitySelected(entityPtr);
@@ -2245,179 +3384,6 @@ var IEditor = IWrapper.$extend(
     {
         if (isNotNull(this.currentObject))
             this.removeEntityCommand(this.currentObject);
-    },
-
-    createContextMenu : function()
-    {
-        this.ui.sceneTree.holder.contextmenu({
-            addClass: "contextmenu-z",
-            css : { color: "red" },
-            delegate: "span.fancytree-node",
-            menu: [
-                {title: "Edit", cmd: "edit", uiIcon: "ui-icon-pencil"},
-                {title: "Delete", cmd: "delete", uiIcon: "ui-icon-trash"},
-            ],
-            select: function(event, ui) {
-                var element = ui.target[0];
-                if (ui.cmd === "edit")
-                {
-                    var node = $.ui.fancytree.getNode(element);
-                    var target = node.key.split("-");
-
-                    var entityId = -1;
-                    var componentId = -1;
-                    if (target.length >= 2)
-                        entityId = parseInt(target[1]);
-                    if (target.length >= 3)
-                        componentId = parseInt(target[2]);
-
-                    var entity = IEditor.scene.entityById(entityId);
-                    if (isNotNull(entity))
-                        this.selectEntity(entity, componentId);
-                }
-                else if (ui.cmd === "delete")
-                {
-                    var node = $.ui.fancytree.getNode(element);
-                    var target = node.key.split("-");
-                    var entityId = -1;
-                    var componentId = -1;
-                    if (target.length >= 2)
-                        entityId = parseInt(target[1]);
-                    if (target.length >= 3)
-                        componentId = parseInt(target[2]);
-
-                    var entStr = IEditor.scene.entityString;
-                    var compStr = IEditor.scene.componentString;
-                    var entity = IEditor.scene.entityById(entityId);
-                    if (isNull(entity))
-                        return;
-                    else
-                    {
-                        if (componentId !== -1)
-                        {
-                            var componentPtr = entity.componentById(componentId);
-                            var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveComponent",
-                                "Remove " + compStr,
-                                "Are you sure that you want to remove this " + compStr + "?",
-                                function(){
-                                    IEditor.Instance.removeComponentCommand(componentPtr);
-                                });
-
-                            confirmDialog.exec();
-                        }
-                        else
-                        {
-                            var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveEntity",
-                                "Remove " + entStr + " with ID " + entityId,
-                                "Are you sure that you want to remove this " + entStr + "?",
-                                function(){
-                                    IEditor.Instance.removeEntityCommand(entity);
-                                });
-
-                            confirmDialog.exec();
-                        }
-                    }
-                }
-            }.bind(this)
-        });
-    },
-
-    populateScene : function()
-    {
-        var entities = IEditor.scene.entities();
-
-        var sceneRootElem = $("<ul/>",{
-            id : "sceneTree-rootElement"
-        });
-        sceneRootElem.css("text-align", "left");
-
-        this.ui.sceneTree.holder.append(sceneRootElem);
-        this.ui.sceneTree.holder.fancytree({
-            icons : false
-        });
-
-        var rootNode = this.ui.sceneTree.holder.fancytree("getRootNode");
-        for (var i = 0; i < entities.length; i++)
-        {
-            var entity = entities[i];
-            this.createTreeItemForEntity(entity, rootNode);
-        };
-
-        this.sceneEvents.push(IEditor.scene.entityCreated(this, this.onEntityCreated));
-        this.sceneEvents.push(IEditor.scene.entityRemoved(this, this.onEntityRemoved));
-        this.sceneEvents.push(IEditor.scene.componentCreated(this, this.onComponentCreated));
-        this.sceneEvents.push(IEditor.scene.componentRemoved(this, this.onComponentRemoved));
-        this.sceneEvents.push(IEditor.scene.attributeChanged(this, this.onAllAttributeChanges));
-    },
-
-    saveAccordionHistory : function()
-    {
-        var previousHistory = this.accordionHistory[this.currentObject.id];
-        if (isNotNull(previousHistory))
-            previousHistory.length = 0;
-
-        var history = this.accordionHistory[this.currentObject.id];
-        history = [];
-
-        var atLeastOneActive = false;
-        var accordions = $("div[id^='accordion-']");
-        for (var i = 0; i < accordions.length; i++)
-        {
-            var targetCompId = $(accordions[i]).data("targetComponent");
-            var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
-            if (isActive)
-                history.push($(accordions[i]).data("targetComponent"));
-        }
-
-        if (history.length !== 0)
-            this.accordionHistory[this.currentObject.id] = history;
-    },
-
-    getAccordionHistory : function(entityId)
-    {
-        return (isNull(this.accordionHistory[entityId]) ? [] : this.accordionHistory[entityId]);
-    },
-
-    createTreeItemForEntity : function(entityPtr, parentNode)
-    {
-        var entityNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        if (isNotNull(entityNode))
-            return;
-
-        var childNode = parentNode.addChildren({
-            title : this.getNodeTitleForEntity(entityPtr),
-            key : "sceneNode-" + entityPtr.id
-        });
-
-        var components = entityPtr.components();
-        for (var i = 0; i < components.length; i++)
-            this.createTreeItemForComponent(components[i], childNode);
-    },
-
-    createTreeItemForComponent : function(componentPtr, parentNode)
-    {
-        if (isNull(parentNode))
-            return;
-
-        var fullName = this.getNodeTitleForComponent(componentPtr);
-        var childNode = parentNode.addChildren({
-            title : fullName,
-            key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
-        });
-    },
-
-    removeTreeItem : function(entityPtr, componentPtr)
-    {
-        var node = null;
-        if (isNull(componentPtr))
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        else
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
-
-        if (isNotNull(node))
-            node.remove();
     },
 
     getNodeTitleForEntity : function(entityPtr, setUnnamed)
@@ -2453,34 +3419,18 @@ var IEditor = IWrapper.$extend(
         return ("[" + elementPtr.id + "] " + elementType + elementName);
     },
 
-    renameEntityNode : function(entityPtr, setUnnamed)
-    {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        if (isNull(treeItem))
-            return;
-
-        treeItem.setTitle(this.getNodeTitleForEntity(entityPtr, setUnnamed));
-    },
-
-    renameComponentNode : function(componentPtr)
-    {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id);
-        if (isNull(treeItem))
-            return;
-
-        treeItem.setTitle(this.getNodeTitleForComponent(componentPtr));
-    },
-
     onComponentCreated : function(entityPtr, componentPtr)
     {
         if (!this.isEditorEnabled())
             return;
 
-        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-            this.appendAccordionForComponent(componentPtr);
-
-        var treeNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        this.createTreeItemForComponent(componentPtr, treeNode);
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onComponentCreated === "function")
+                panel.onComponentCreated(entityPtr, componentPtr);
+        }
     },
 
     onComponentRemoved : function(entityPtr, componentPtr)
@@ -2488,20 +3438,13 @@ var IEditor = IWrapper.$extend(
         if (!this.isEditorEnabled())
             return;
 
-        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-            if (componentPtr.typeName === "Name")
-                this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
-
-        var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
-        $(accordionId).hide("fast", function()
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
         {
-            $(accordionId).remove();
-        });
-
-        if (componentPtr.typeName === "Name")
-            this.renameEntityNode(entityPtr, true);
-
-        this.removeTreeItem(entityPtr, componentPtr);
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onComponentRemoved === "function")
+                panel.onComponentRemoved(entityPtr, componentPtr);
+        }
     },
 
     onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
@@ -2509,782 +3452,12 @@ var IEditor = IWrapper.$extend(
         if (!this.isEditorEnabled())
             return;
 
-        if (isNotNull(this.currentObject))
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
         {
-            if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
-            {
-                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-                if (componentPtr.typeName === "Name" && attributeName === "name")
-                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
-            }
-        }
-
-        if (componentPtr.typeName === "Name" && attributeName === "name")
-            this.renameEntityNode(entityPtr);
-    },
-
-    populateComponents : function(entityPtr, activeComponent)
-    {
-        this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
-
-        for (var i = this.componentEvents.length - 1; i >= 0; i--)
-            IEditor.scene.unsubscribe(this.componentEvents[i]);
-        this.componentEvents.length = 0;
-
-        var components = entityPtr.components();
-        if (isNotNull(entityPtr.attributes))
-            this.appendAccordionForComponent(entityPtr, true, false);
-
-        var accordionHistory = this.getAccordionHistory(entityPtr.id);
-        for (var i = 0; i < components.length; ++i)
-        {
-            var compId = parseInt(components[i].id);
-            var compHistoryIndex = accordionHistory.indexOf(compId);
-            var activateComp = ((compId === activeComponent) || compHistoryIndex !== -1);
-            this.appendAccordionForComponent(components[i], activateComp);
-        }
-
-        var allowedComps = IEditor.scene.registeredComponents(entityPtr.typeName);
-        if (allowedComps.length === 0)
-        {
-            this.ui.ecEditor.editCompButton.button("disable");
-            this.ui.ecEditor.addCompButton.button("disable");
-        }
-        else
-        {
-            this.ui.ecEditor.editCompButton.button("enable");
-            this.ui.ecEditor.addCompButton.button("enable");
-        }
-
-        this.ui.ecEditor.holder.on("change", "input", this.onAttributesEdit);
-        this.ui.ecEditor.holder.on("keydown", "input", function(e) { e.stopPropagation(); });
-        this.ui.ecEditor.holder.on("change", "select", this.onAttributesEdit);
-
-        // this.ui.ecEditor.holder.sortable();
-    },
-
-    appendAccordionForComponent : function(componentPtr, setActive, canBeRemoved)
-    {
-        if (isNull(componentPtr))
-            return;
-        if (isNull(setActive))
-            setActive = false;
-        if (isNull(canBeRemoved))
-            canBeRemoved = true;
-        var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
-
-        var accordionId = "accordion-" + entAndCompSuffix;
-        var accordion = $("<div/>", {
-            id : accordionId
-        });
-        accordion.data("targetComponent", componentPtr.id);
-
-        var contentHolder = $("<div/>");
-        var header = $("<div class='h3'/>");
-
-        var addAttrButtonId = "addAttrButton-" + entAndCompSuffix;
-        var addAttrButton = $("<button/>", {
-            id : addAttrButtonId,
-            title : "Add an attribute to this component"
-        });
-        addAttrButton.data("parentAccordion", accordionId);
-        addAttrButton.css("float", "right");
-        addAttrButton.button({
-            icons : {
-                primary : "ui-icon-plusthick"
-            },
-            text : false
-        });
-
-        var removeButtonId = "removeButton-" + entAndCompSuffix;
-        var removeButton = $("<button/>", {
-            id : removeButtonId,
-            title : "Remove this " + IEditor.scene.componentString
-        });
-        removeButton.data("parentAccordion", accordionId);
-        removeButton.css("float", "right");
-        removeButton.button({
-            icons : {
-                primary : "ui-icon-closethick"
-            },
-            text : false
-        });
-
-        var editButton = null;
-        if (IEditor.Instance.type === "xml3d")
-        {
-            var editButtonId = "editButton-" + componentPtr.id;
-            editButton = $("<button/>", {
-                id : editButtonId,
-                title : "Edit this element"
-            });
-            editButton.data("parentAccordion", accordionId);
-            editButton.css("float", "right");
-            editButton.button({
-                icons : {
-                    primary : "ui-icon-pencil"
-                },
-                text : false
-            });
-        }
-
-        var editButtonsVisible = this.ui.ecEditor.editCompButton.data("toggle");
-        if (!editButtonsVisible)
-        {
-            addAttrButton.hide();
-            removeButton.hide();
-            if (isNotNull(editButton))
-                editButton.hide();
-        }
-
-        var compNameNoEC = IEditor.scene.componentNameInHumanFormat(componentPtr.typeName);
-        header.html(compNameNoEC + (componentPtr.getName() === "" ? "" : " (" + componentPtr.getName() + ")"));
-
-        var content = $("<div/>").css(
-        {
-            "padding" : "0px 0px 0px 10px"
-        });
-
-        var attributes = componentPtr.attributes();
-
-        if (attributes.length != 0)
-        {
-            var table = $("<table/>", {
-                id : "table-" + entAndCompSuffix
-            });
-
-            table.data("componentData", {
-                parentCompId : componentPtr.id,
-                parentEntityId : componentPtr.parentId()
-            });
-
-            for (var attr = 0; attr < attributes.length; attr++)
-            {
-                var tableRow = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributes[attr].name, attributes[attr]);
-                if (tableRow != null)
-                    table.append(tableRow);
-            }
-
-            content.append(table);
-        }
-        // else
-        //     content.html($("<em/>").html("Nothing to edit for this component"));
-
-        if (componentPtr.isDynamic())
-        {
-            this.componentEvents.push(componentPtr.onAttributeAdded(this, this.onAttributeCreate));
-            this.componentEvents.push(componentPtr.onAttributeAboutToBeRemoved(this, this.onAttributeRemove));
-        }
-
-        if (canBeRemoved)
-        {
-            header.append(removeButton);
-            if (isNotNull(editButton))
-                header.append(editButton);
-        }
-        if (componentPtr.isDynamic())
-            header.append(addAttrButton);
-
-        contentHolder.append(header);
-        contentHolder.append(content);
-
-        accordion.append(contentHolder);
-
-        this.ui.ecEditor.holder.append(accordion);
-        accordion.accordion({
-            header : "> div > .h3",
-            collapsible : true,
-            heightStyle : "content",
-            active : (setActive ? 0 : false)
-        });
-        accordion.addClass("accStripe");
-        addAttrButton.tooltip({
-            track : true
-        });
-        removeButton.tooltip({
-            track : true
-        });
-        if (isNotNull(editButton))
-            editButton.tooltip({
-                track : true
-            });
-
-        addAttrButton.click(function(event)
-        {
-            event.stopPropagation();
-            event.preventDefault();
-
-            var attrs = new Array();
-            var dialog = new ModalDialog("addAttribute", "Add new attribute", 450, 250);
-            var attributeIds = IEditor.scene.attributeTypeIds();
-            for (var i = 0; i < attributeIds.length; i++)
-                attrs.push({
-                    name : IEditor.scene.attributeTypeToName(attributeIds[i]),
-                    value : attributeIds[i]
-                });
-
-            dialog.appendComboBox("combobox-attributeList", "Select attribute type:", attrs);
-            dialog.appendInputBox("input-attributeName", "Attribute name:", "string");
-            var buttons = {
-                "Add attribute" : function()
-                {
-                    var attrTypeElem = $("#combobox-attributeList");
-                    var attrNameElem = $("#input-attributeName");
-
-                    var attrTypeName = attrTypeElem.find(":selected").text();
-                    var attrTypeId = parseInt(attrTypeElem.find(":selected").val());
-                    var attrName = attrNameElem.val();
-
-                    if (isNull(attrName) || attrName === "")
-                    {
-                        attrNameElem.addClass(Utils.invalidDataName);
-                        return;
-                    }
-
-                    if (componentPtr.isDynamic())
-                    {
-                        if (!IEditor.Instance.addAttributeCommand(componentPtr, attrTypeId, attrName))
-                        {
-                            attrNameElem.addClass(Utils.invalidDataName);
-                            return;
-                        }
-                    }
-                    $(this).dialog("close");
-                    $(this).remove();
-                },
-                "Cancel" : function()
-                {
-                    $(this).dialog("close");
-                    $(this).remove();
-                }
-            }
-
-            dialog.addButtons(buttons);
-            dialog.exec();
-
-        });
-
-        removeButton.click( function(event)
-        {
-            event.stopPropagation();
-            event.preventDefault();
-
-            var accordionId = $(this).data("parentAccordion");
-            if (isNotNull(accordionId))
-            {
-                var entityId = parseInt(accordionId.split("-")[1]);
-                var componentId = parseInt(accordionId.split("-")[2]);
-                var entityPtr = IEditor.scene.entityById(entityId);
-                if (isNotNull(entityPtr))
-                {
-                    var componentPtr = entityPtr.componentById(componentId);
-                    var compStr = IEditor.scene.componentString;
-                    var confirmDialog = ModalDialog.confirmationDialog(
-                        "RemoveComponent",
-                        "Remove " + compStr,
-                        "Are you sure that you want to remove this " + compStr + "?",
-                        function()
-                        {
-                            IEditor.Instance.removeComponentCommand(componentPtr);
-                        }
-                    );
-
-                    confirmDialog.exec();
-
-                }
-            }
-        });
-
-        if (isNotNull(editButton))
-            editButton.click( function(event)
-            {
-                event.stopPropagation();
-                event.preventDefault();
-
-                var elementId = parseInt($(this).attr("id").split("-")[1]);
-                var entityPtr = IEditor.scene.entityById(elementId);
-                if (isNotNull(entityPtr))
-                    IEditor.Instance.selectEntity(entityPtr);
-            });
-    },
-
-    createRowsForAttribute : function (entityId, componentId, attrName, attributePtr)
-    {
-        var element = null;
-        var attributeValue = attributePtr.get();
-
-        if (isNull(entityId))
-            entityId = componentId;
-
-        var attributeTypeId = attributePtr.typeId;
-        var isDynamic = attributePtr.owner.isDynamic();
-        var jsType = typeof(attributeValue);
-        var inputType = (jsType === "boolean" ? "checkbox" : "input");
-        var idOfElements = entityId + "-" + componentId + "-" + attrName;
-
-        var tableBody = $("<tbody/>", {
-            id : "tableBody-" + idOfElements
-        });
-
-        var tableRow = $("<tr/>").css(Utils.attributeTableRowStyle);
-        var removeAttrColumn = $("<td/>");
-        removeAttrColumn.css("minWidth", "1px");
-
-        var removeAttrButton = $("<button/>", {
-            id : "removeAttrButton-" + idOfElements
-        });
-        removeAttrButton.css("float", "left");
-        removeAttrButton.button({
-            icons : {
-                primary : "ui-icon-closethick"
-            },
-            text : false
-        });
-
-        var editButtonsVisible = this.ui.ecEditor.editCompButton.data("toggle");
-        if (!editButtonsVisible)
-            removeAttrButton.hide();
-
-        removeAttrButton.click( function()
-        {
-            var confirmDialog = ModalDialog.confirmationDialog(
-                "RemoveAttribute",
-                "Remove attribute named " + attributePtr.name,
-                "Are you sure you want to remove this attribute?",
-                function(){
-                    var compPtr = attributePtr.owner;
-                    if (isNotNull(compPtr))
-                        IEditor.Instance.removeAttributeCommand(attributePtr);
-                }
-            );
-
-            confirmDialog.exec();
-        })
-
-        var attrNameColumn = $("<td/>", {id : "label-" + idOfElements}).css(Utils.attributeTableColumnStyle);
-        if (!isDynamic)
-            attrNameColumn.attr("colspan", 2);
-
-        var elementColumn = $("<td/>").css(Utils.attributeTableColumnStyle);
-        attrNameColumn.html($("<strong/>").html(attrName));
-
-        if (IEditor.scene.isAttributeAtomic(attributeTypeId))
-        {
-            element = $("<input/>", {
-                id : idOfElements,
-                type : inputType,
-                value : attributeValue,
-                checked : attributeValue
-            });
-
-            element.data("attrData", {
-                name : attrName,
-                type : jsType,
-                typeId : attributeTypeId,
-                parentCompId : componentId,
-                parentEntityId : entityId,
-            });
-        }
-
-        if (element != null)
-            elementColumn.append(element);
-        if (isDynamic)
-        {
-            removeAttrColumn.append(removeAttrButton);
-            tableRow.append(removeAttrColumn);
-        }
-
-        tableRow.append(attrNameColumn);
-        tableRow.append(elementColumn);
-        tableBody.append(tableRow);
-
-        // Fill complex elements (Transform, Vector2, Vector3 etc.)
-        if (IEditor.scene.isAttributeTransform(attributeTypeId))
-        {
-            var labels = ["position x", "y", "z", "rotation x", "y", "z", "scale x", "y", "z"];
-            var comps = ["x", "y", "z"];
-            for (var i = 0; i < 9; i++)
-            {
-                // pos for i = 0..2, rot for i = 3..5, scale for i = 6..8
-                var varName = (i < 3 ? "pos" : (i < 6) ? "rot" : "scale");
-                // x for i = 0, 3, 6 | y for i = 1, 4, 7 | z for i = 2, 5, 8
-                var xyz = comps[((i >= 3  && i < 6) ? i - 3 : (i >= 6 ? i - 6 : i))];
-
-                var transformRow = $("<tr/>").css(Utils.attributeTableRowStyle);
-                var transformAttrCol = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
-                var transformElemCol = $("<td/>").css(Utils.attributeTableColumnStyle);
-
-                transformAttrCol.html(labels[i]);
-                var inputElem = $("<input/>", {
-                    id : idOfElements + "-" + varName + "-" + xyz,
-                    type : "number",
-                    step : "1",
-                    value : attributeValue[varName][xyz]
-                });
-
-                if (i >= 6)
-                    inputElem.attr("min", 0.0);
-
-                inputElem.data("attrData", {
-                    name : attrName,
-                    type : jsType,
-                    typeId : attributeTypeId,
-                    parentCompId : componentId,
-                    parentEntityId : entityId,
-                    transformComp : varName,
-                    axis : xyz
-                })
-
-                transformElemCol.append(inputElem);
-                transformRow.append(transformAttrCol);
-                transformRow.append(transformElemCol);
-                tableBody.append(transformRow);
-            }
-        }
-        else if (IEditor.scene.isAttributeTuple(attributeTypeId))
-        {
-            var labels = new Array();
-            if (!IEditor.scene.isAttributeColor(attributeTypeId))
-                labels = ["x", "y", "z", "w"];
-            else
-                labels = ["r", "g", "b", "a"];
-
-            var vec2or3or4orQuat = IEditor.scene.isAttributeTuple(attributeTypeId);
-
-            for (var i = 0; i < vec2or3or4orQuat; i++)
-            {
-                var vecRow = $("<tr/>").css(Utils.attributeTableRowStyle);
-                var vecAttr = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
-                var vecElem = $("<td/>").css(Utils.attributeTableColumnStyle);
-
-                vecAttr.html(labels[i]);
-                var inputElem = $("<input/>", {
-                    id : idOfElements + "-" + labels[i],
-                    type : "number",
-                    step : "1",
-                    value : attributeValue[labels[i]]
-                });
-
-                inputElem.data("attrData",{
-                    name : attrName,
-                    type : jsType,
-                    typeId : attributeTypeId,
-                    parentCompId : componentId,
-                    parentEntityId : entityId,
-                    axis : labels[i]
-                });
-
-                vecElem.append(inputElem);
-                vecRow.append(vecAttr);
-                vecRow.append(vecElem);
-                tableBody.append(vecRow);
-            }
-        }
-        else if (IEditor.scene.isAttributeArray(attributeTypeId))
-        {
-            for (var i = 0; i <= attributeValue.length; i++)
-            {
-                var arrayRow = this.createArrayRow(attributePtr, attributeValue, i);
-                tableBody.append(arrayRow);
-            }
-
-            tableBody.data("arrayLength", attributeValue.length);
-        }
-        else if (IEditor.scene.isAttributeEnum(attributeTypeId))
-        {
-            var values = attributePtr.validValues();
-            if (isNotNull(values))
-            {
-                var selectElement = $("<select/>", {
-                    id : idOfElements
-                });
-                selectElement.data("attrData", {
-                    name : attrName,
-                    type : jsType,
-                    typeId : attributeTypeId,
-                    parentCompId : componentId,
-                    parentEntityId : entityId,
-                });
-
-                for (var i = 0; i < values.length; i++)
-                {
-                    var option = $("<option/>", {
-                        value : values[i]
-                    });
-
-                    option.html(values[i]);
-                    selectElement.append(option);
-                }
-
-                selectElement.appendTo(elementColumn);
-            }
-        }
-
-        return tableBody;
-    },
-
-    createArrayRow : function(attributePtr, attributeValue, arrayIndex)
-    {
-        var entityId = attributePtr.owner.parentId();
-        var componentId = attributePtr.owner.id;
-        var idOfElement = entityId + "-" + componentId + "-" + attributePtr.name + "-" + arrayIndex;
-
-        var arrayRow = $("<tr/>", {
-            id : "attributeRow-" + idOfElement
-        });
-        arrayRow.css(Utils.attributeTableRowStyle);
-        var arrayLabel = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
-        var arrayElem = $("<td/>").css(Utils.attributeTableColumnStyle);
-
-        var attrName = attributePtr.name;
-        var attrValue = attributeValue[arrayIndex];
-        var attributeTypeId = attributePtr.typeId;
-        var jsType = typeof(attributeValue);
-
-        arrayLabel.html("[" + arrayIndex + "]");
-        var inputElem = $("<input/>", {
-            id : idOfElement,
-            type : "input",
-            value : (isNull(attrValue) ? "" : attrValue)
-        });
-
-        inputElem.data("attrData", {
-            name : attrName,
-            type : jsType,
-            typeId : attributeTypeId,
-            parentCompId : componentId,
-            parentEntityId : entityId,
-            index : arrayIndex
-        })
-
-        arrayElem.append(inputElem);
-        arrayRow.append(arrayLabel);
-        arrayRow.append(arrayElem);
-
-        return arrayRow;
-    },
-
-    onAttributesEdit : function()
-    {
-        var data = $(this).data("attrData");
-        var value = $(this).val();
-        var finalValue = null;
-
-        var name = data.name;
-        var type = data.type;
-        var typeId = data.typeId;
-        var entId = data.parentEntityId;
-        var compId = data.parentCompId;
-
-        var entity = IEditor.scene.entityById(entId);
-        if (isNull(entity))
-            return;
-
-        var component = entity.componentById(compId);
-        if (isNull(component))
-            return;
-
-        var attribute = component.attributeByName(name);
-        if (isNull(attribute))
-            return;
-
-        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
-        {
-            if (type === "boolean")
-                finalValue = $(this).is(":checked");
-            else if (type === "number")
-            {
-                if (isNaN(value))
-                {
-                    $(this).addClass(Utils.invalidDataName);
-                    return;
-                }
-                else
-                {
-                    $(this).removeClass(Utils.invalidDataName);
-                    finalValue = parseFloat(value);
-                }
-            }
-            else
-                finalValue = value;
-        }
-        else if (IEditor.scene.isAttributeTransform(typeId))
-        {
-            var transformComp = data.transformComp;
-            if (transformComp === "scale" && parseFloat($(this).val()) < 0.0)
-            {
-                $(this).addClass(Utils.invalidDataName);
-                return;
-            }
-            else
-                $(this).removeClass(Utils.invalidDataName);
-
-            var axis = data.axis;
-            var clone = attribute.get();
-            clone[transformComp][axis] = parseFloat($(this).val());
-            finalValue = clone;
-        }
-        else if (IEditor.scene.isAttributeTuple(typeId))
-        {
-            var axis = data.axis;
-            var clone = attribute.get();
-            clone[axis] = parseFloat($(this).val());
-            finalValue = clone;
-        }
-        else if (IEditor.scene.isAttributeArray(typeId))
-        {
-            var index = data.index;
-            var clone = attribute.get();
-            clone[index] = $(this).val();
-            finalValue = clone;
-        }
-        else
-            IEditor.scene.logError("[Editor]: Current type is not implemented yet! Type requested was: " + IEditor.scene.attributeTypeToName(typeId));
-
-        IEditor.Instance.changeAttributeCommand(attribute, finalValue);
-    },
-
-    onAttributeCreate : function(componentPtr, attributePtr)
-    {
-        var suffix = componentPtr.parentId() + "-" + componentPtr.id;
-        var targetAccordion = $("#accordion-" + suffix);
-
-        var targetTable = $("#table-" + suffix);
-        var tableBody = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributePtr.name, attributePtr);
-        tableBody.appendTo(targetTable);
-
-        targetAccordion.accordion("refresh");
-    },
-
-    onAttributeRemove : function(componentPtr, attributeIndex, attributeName)
-    {
-        var suffixAccordion = componentPtr.parentId() + "-" + componentPtr.id;
-        var suffix = suffixAccordion + "-" + attributeName;
-        var targetBody = $("#tableBody-" + suffix);
-        targetBody.hide("fast", function()
-            {
-                targetBody.remove();
-                var accordionId = "#accordion-" + suffixAccordion;
-                $(accordionId).accordion("refresh");
-            }
-        );
-    },
-
-    onAttributesChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
-    {
-        if (!this.isEditorEnabled())
-            return;
-
-        var attributePtr = component.attributeByName(attributeName);
-        var typeId = attributePtr.typeId;
-        var elementName = entity.id + "-" + component.id + "-" + attributeName;
-        if (isNull(elementName))
-            return;
-
-        if (IEditor.scene.isAttributeAtomic(typeId) || IEditor.scene.isAttributeEnum(typeId))
-        {
-            if (IEditor.scene.isAttributeBool(typeId))
-            {
-                var value = attributeValue;
-                if (typeof(value) === "string")
-                    value = (value === "true" ? true : false);
-
-                $("#" + elementName).prop('checked', value);
-            }
-
-            $("#" + elementName).val(attributeValue);
-        }
-        else if (IEditor.scene.isAttributeTransform(typeId))
-        {
-            // WebRocket specific 'Transform' attribute
-            var xyz = ["x", "y", "z"];
-            for (var i = 0; i < 9; i++)
-            {
-                // pos for i = 0..2, rot for i = 3..5, scale for i = 6..8
-                var transformComp = (i < 3 ? "pos" : (i < 6) ? "rot" : "scale");
-                 // x for i = 0, 3, 6 | y for i = 1, 4, 7 | z for i = 2, 5, 8
-                var tuple = xyz[((i >= 3  && i < 6) ? i - 3 : (i >= 6 ? i - 6 : i))];
-
-                var extElementName = elementName + "-" + transformComp + "-" + tuple;
-                $("#" + extElementName).val(attributeValue[transformComp][tuple]);
-
-                if (i >= 6)
-                    $("#" + extElementName).removeClass(Utils.invalidDataName);
-            }
-        }
-        else if (IEditor.scene.isAttributeTuple(typeId))
-        {
-            var xyzw = [];
-            if (!IEditor.scene.isAttributeColor(typeId))
-                xyzw = ["x", "y", "z", "w"];
-            else
-                xyzw = ["r", "g", "b", "a"];
-
-            if (typeof(attributeValue) === "string")
-            {
-                var attrValue = attributeValue.split(" ");
-                for (var i = 0; i < attrValue.length; i++)
-                {
-                    var value = attrValue[i];
-                    var extElementName = elementName + "-" + xyzw[i];
-                    $("#" + extElementName).val(value);
-                }
-            }
-            else
-                for (var i = 0; i < xyzw.length; i++)
-                {
-                    var value = attributeValue[xyzw[i]];
-                    if (isNull(value))
-                        return;
-
-                    var extElementName = elementName + "-" + xyzw[i];
-                    $("#" + extElementName).val(value);
-                }
-        }
-        else if (IEditor.scene.isAttributeArray(typeId))
-        {
-            var arrayTableBody = $("tbody#tableBody-" + elementName);
-            if (arrayTableBody.length <= 0)
-                return;
-
-            var arrayLength = attributeValue.length;
-            for (var i = 0; i < arrayLength; i++)
-            {
-                var extElementName = elementName + "-" + i;
-                var element = $("input#" + extElementName);
-                // if there is a new item in AssetReferenceList, add new row for it
-                if (element.length <= 0)
-                {
-                    var newArrayElement = this.createArrayRow(attributePtr, attributeValue, i);
-                    arrayTableBody.append(newArrayElement);
-                }
-
-                element.val(attributeValue[i]);
-            }
-
-            var previousLength = arrayTableBody.data("arrayLength");
-            var difference = previousLength - arrayLength;
-
-            // Remove extra attribute elements
-            if (previousLength > arrayLength)
-            {
-                for (var i = previousLength; i >= arrayLength; i--)
-                {
-                    var extElementName = elementName + "-" + i;
-                    var elementToBeRemoved = $("tr#attributeRow-" + extElementName);
-                    if (elementToBeRemoved.length > 0)
-                        elementToBeRemoved.remove()
-                }
-            }
-
-            // Add an empty one for entering any subsequent asset refs
-            if (difference != 0)
-            {
-                var emptyArrayElement = this.createArrayRow(attributePtr, attributeValue, arrayLength);
-                arrayTableBody.append(emptyArrayElement);
-            }
-
-            arrayTableBody.data("arrayLength", arrayLength);
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onAllAttributeChanges === "function")
+                panel.onAllAttributeChanges(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
         }
     }
 });
@@ -3786,7 +3959,7 @@ var ToolkitManager = Class.$extend(
         });
         this.ui.deleteButton.button("option", "disabled", true);
 
-        if (IEditor.Instance.type === "rocket")
+        if (IEditor.Instance.type === "webtundra")
         {
             this.ui.gridButton = $("<input/>", {
                 type : "checkbox",
@@ -3891,21 +4064,6 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.buttonset("option", "disabled", true);
         }
 
-        this.ui.sceneTreeButton = $("<input/>",{
-            type : "radio",
-            id : "_toolkit-sceneTreeButton",
-            name : "panels",
-            checked : "checked"
-        });
-        this.ui.sceneTreeButton.data("isECEditor", false);
-
-        this.ui.ecEditorButton = $("<input/>", {
-            type : "radio",
-            id : "_toolkit-ecEditorButton",
-            name : "panels",
-        });
-        this.ui.ecEditorButton.data("isECEditor", true);
-
         this.ui.panelsButtonSet = $("<div/>", {
             id : "_toolkit-panelsButtonSet"
         });
@@ -3916,23 +4074,6 @@ var ToolkitManager = Class.$extend(
             "margin-top" : -3
         });
 
-        var labelSceneTree = $("<label/>", {
-            "for" : "_toolkit-sceneTreeButton"
-        });
-        labelSceneTree.text("Scene tree").css(this.fontConfig).css({ "font-size" : 13 } );
-
-        var labelECEditor = $("<label/>", {
-            "for" : "_toolkit-ecEditorButton"
-        });
-        labelECEditor.text("EC editor").css(this.fontConfig).css({ "font-size" : 13 } );
-
-        labelSceneTree.css({ "font-size" : 13, border : "1px solid #1976D2" });
-        labelECEditor.css({ "font-size" : 13, border : "1px solid #1976D2" });
-
-        this.ui.panelsButtonSet.append(this.ui.sceneTreeButton);
-        this.ui.panelsButtonSet.append(labelSceneTree);
-        this.ui.panelsButtonSet.append(this.ui.ecEditorButton);
-        this.ui.panelsButtonSet.append(labelECEditor);
         this.ui.panelsButtonSet.buttonset();
 
         if (isNotNull(this.toolbar))
@@ -3946,7 +4087,7 @@ var ToolkitManager = Class.$extend(
             this.toolbar.append(this.ui.quickAddButton);
             this.toolbar.append(this.ui.deleteButton);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
-            if (IEditor.Instance.type === "rocket")
+            if (IEditor.Instance.type === "webtundra")
                 this.toolbar.append(this.ui.axesGridButtonSet);
 
             this.toolbar.append(this.ui.panelsButtonSet);
@@ -4114,7 +4255,7 @@ var ToolkitManager = Class.$extend(
             IEditor.Instance.quickCreateEntity(ui.item.text());
         });
 
-        if (IEditor.Instance.type === "rocket")
+        if (IEditor.Instance.type === "webtundra")
         {
             this.ui.gridButton.click(function()
             {
@@ -4141,12 +4282,36 @@ var ToolkitManager = Class.$extend(
         }
 
         this.ui.panelsButtonSet.on("change", function(event){
-            IEditor.Instance.switchPanels($(event.target).data("isECEditor"));
+            IEditor.Instance.switchPanels($(event.target).data("panelName"));
         });
 
         $("body:not(.ui-menu)").click(function() {
             $(".ui-menu").hide();
         })
+    },
+
+    appendPanelButton : function(panelName, label)
+    {
+        var panelButton = $("<input/>",{
+            type : "radio",
+            id : "_toolkit-" + panelName,
+            name : "panels",
+            checked : "checked"
+        });
+
+        panelButton.data("panelName", panelName);
+
+        var panelButtonLabel = $("<label/>", {
+            "for" : "_toolkit-" + panelName
+        });
+
+        panelButtonLabel.text(label).css(this.fontConfig).css({ "font-size" : 13 } );
+        panelButtonLabel.css({ "font-size" : 13, border : "1px solid #1976D2" });
+
+        this.ui.panelsButtonSet.append(panelButton);
+        this.ui.panelsButtonSet.append(panelButtonLabel);
+        this.ui.panelsButtonSet.buttonset("destroy");
+        this.ui.panelsButtonSet.buttonset();
     },
 
     onViewUndoStackClicked : function()
@@ -4385,10 +4550,19 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.buttonset("option", "disabled", isNull(entityPtr));
     },
 
-    onPanelsSwitch : function(isECEditor)
+    onPanelsSwitch : function(panelName)
     {
-        this.ui.sceneTreeButton.prop("checked", !isECEditor);
-        this.ui.ecEditorButton.prop("checked", isECEditor);
+        var widget = this.ui.panelsButtonSet.buttonset("widget")[0];
+        for (var i = widget.children.length - 1; i >= 0; i--)
+        {
+            var child = widget.children[i];
+            if (child.localName === "input")
+            {
+                var pName = $(child).data("panelName");
+                $(child).prop("checked", panelName == pName);
+            }
+        }
+
         this.ui.panelsButtonSet.buttonset("refresh");
     },
 
