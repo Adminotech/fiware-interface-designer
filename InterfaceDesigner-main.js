@@ -3298,8 +3298,12 @@ var IEditor = IWrapper.$extend(
 
         if (enabled)
         {
-            // switch to scenetree
-            // call scenetreepanel enable
+            this.sceneEvents.push(IEditor.scene.entityCreated(this, this.onEntityCreated));
+            this.sceneEvents.push(IEditor.scene.entityRemoved(this, this.onEntityRemoved));
+            this.sceneEvents.push(IEditor.scene.componentCreated(this, this.onComponentCreated));
+            this.sceneEvents.push(IEditor.scene.componentRemoved(this, this.onComponentRemoved));
+            this.sceneEvents.push(IEditor.scene.attributeChanged(this, this.onAllAttributeChanges));
+
             this.switchPanels("scenetree");
             this.panels["scenetree"].enable();
             this.toolkit.show();

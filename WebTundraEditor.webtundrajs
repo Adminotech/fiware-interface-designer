@@ -697,6 +697,17 @@ var TundraScene = SceneWrapper.$extend(
     {
         var entity = __(TundraEntity, entityPtr);
         this.callback("onEntityRemoved", entity);
+        if (IEditor.Instance.transformEditor)
+        {
+            for (var i = IEditor.Instance.transformEditor.targets.length - 1; i >= 0; i--) {
+                var target = IEditor.Instance.transformEditor.targets[i].parentEntity;
+                if (target.id == entity.id)
+                {
+                    IEditor.Instance.transformEditor.clearSelection();
+                    break;
+                }
+            };
+        }
     },
 
     _onComponentCreated : function(entityPtr, componentPtr)
@@ -713,6 +724,19 @@ var TundraScene = SceneWrapper.$extend(
         var component = __(TundraComponent, componentPtr);
 
         this.callback("onComponentRemoved", entity, component);
+
+        if (IEditor.Instance.transformEditor)
+        {
+            for (var i = IEditor.Instance.transformEditor.targets.length - 1; i >= 0; i--) {
+                var targetComp = IEditor.Instance.transformEditor.targets[i];
+                var target = IEditor.Instance.transformEditor.targets[i].parentEntity;
+                if (target.id == entity.id && targetComp.id == componentPtr.id)
+                {
+                    IEditor.Instance.transformEditor.clearSelection();
+                    break;
+                }
+            };
+        }
     },
 
     _onAttributeChanged : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
