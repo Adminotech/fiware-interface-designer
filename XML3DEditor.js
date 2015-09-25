@@ -1228,11 +1228,21 @@ var XML3DEditor = IEditor.$extend(
         options.type = "xml3d";
         options.noSelectionString = "<i>(No elements selected)</i>";
         this.$super(options);
+    },
 
-        this.ui.sceneTree.addEntityButton.button("option", "label", "Add new element...");
-        this.ui.ecEditor.addCompButton.button("option", "label", "Add new child element");
+    _onClientConnected : function()
+    {
+        this.$super();
 
-        this.ui.ecEditor.panel.on("mousedown", "input", function(e)
+        this.panels["scenetree"].ui.addEntityButton.button("option", "label", "Add new element...");
+        this.panels["eceditor"].ui.addCompButton.button("option", "label", "Add new child element");
+        this.panels["scenetree"].ui.addEntityButton.off();
+        this.panels["scenetree"].ui.addEntityButton.click(this, this.onAddEntityClicked);
+        this.panels["eceditor"].ui.addCompButton.off();
+        this.panels["eceditor"].ui.addCompButton.click(this, this.onAddComponentClicked);
+
+
+        this.panels["eceditor"].ui.panel.on("mousedown", "input", function(e)
         {
             if (e.button != 2)
                 return;
@@ -1267,7 +1277,6 @@ var XML3DEditor = IEditor.$extend(
             }
         }.bind(this));
     },
-
     createAttributeMenu : function(items, attribute)
     {
         var menuItems = [];
@@ -1280,7 +1289,7 @@ var XML3DEditor = IEditor.$extend(
             });
         }
 
-        this.ui.ecEditor.holder.contextmenu({
+        this.panels["eceditor"].ui.holder.contextmenu({
             addClass : "contextmenu-z",
             delegate: "input",
             menu: menuItems,
@@ -1292,7 +1301,7 @@ var XML3DEditor = IEditor.$extend(
 
         $(document).one("click", function()
         {
-            this.ui.ecEditor.holder.contextmenu("destroy");
+            this.panels["eceditor"].ui.holder.contextmenu("destroy");
         }.bind(this));
     },
 
@@ -1442,7 +1451,7 @@ var XML3DEditor = IEditor.$extend(
 
     createTreeItemForElement : function(elementPtr, parentNode)
     {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + elementPtr.id);
+        var treeItem = this.panels["scenetree"].ui.holder.fancytree("getNodeByKey", "sceneNode-" + elementPtr.id);
         if (isNotNull(treeItem))
             return;
 
@@ -1460,9 +1469,9 @@ var XML3DEditor = IEditor.$extend(
     {
         var node = null;
         if (isNotNull(componentPtr))
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.id);
+            node = this.panels["scenetree"].ui.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.id);
         else
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+            node = this.panels["scenetree"].ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
 
         if (isNotNull(node))
             node.remove();
