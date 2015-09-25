@@ -1467,8 +1467,10 @@ var ECEditorPanel = IPanel.$extend(
         this.accordionHistory = {};
         this.componentEvents = [];                         // Array of EventWrapper
         this.currentObject = null;
+        this.allObjects = [];
 
         this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
+        this.multiSelectionStr = options.multiSelectionStr || "<i>(Multiple entities selected)</i>";     // String
         this.fontConfig = options.fontConfig || {};
     },
 
@@ -1802,7 +1804,7 @@ var ECEditorPanel = IPanel.$extend(
             this.ui.upButton.hide();
             this.ui.buttonsHolder.hide();
         }
-        else
+        else if (isNotNull(entityPtr))
         {
             this.currentObject = entityPtr;
             this.ui.upButton.data("targetEntity", entityPtr.id);
@@ -1817,6 +1819,22 @@ var ECEditorPanel = IPanel.$extend(
         }
     },
 
+    onMultiSelect : function()
+    {
+        if (isNotNull(this.currentObject))
+            this.saveAccordionHistory();
+
+        this.ui.holder.off();
+        this.ui.holder.empty();
+        this.ui.upButton.data("targetEntity", -1);
+        this.ui.addCompButton.data("targetEntity", -1);
+
+        this.currentObject = null;
+        this.ui.entityLabel.html(this.multiSelectionStr);
+
+        this.ui.upButton.hide();
+        this.ui.buttonsHolder.hide();
+    },
 
     populateComponents : function(entityPtr, activeComponent)
     {
@@ -3211,7 +3229,12 @@ var IEditor = IWrapper.$extend(
                     if (raycastResult.entity.id == this.currentObject.id)
                         return;
 
-                this.selectEntity(raycastResult.entity);
+                if (mouseEvent.shiftPressed === true)
+                {
+                    this.appendEntity(raycastResult.entity);
+                }
+                else
+                    this.selectEntity(raycastResult.entity);
                 mouseEvent.suppressed = true;
             }
             else
@@ -3365,6 +3388,17 @@ var IEditor = IWrapper.$extend(
         }
 
         this.toolkit.onEntitySelected(entityPtr);
+    },
+
+    appendEntity : function(entity)
+    {
+        if (this.transformEditor)
+            this.transformEditor.appendTarget(entity._ptr);
+        if (this.transformEditor.targets.length > 1)
+        {
+            this.panels["eceditor"].onMultiSelect();
+            this.toolkit.onMultiSelect();
+        }
     },
 
     /**
@@ -4548,6 +4582,11 @@ var ToolkitManager = Class.$extend(
         this.ui.deleteButton.button("option", "disabled", isNull(entityPtr));
         if (isNotNull(this.ui.transformButtonSet))
             this.ui.transformButtonSet.buttonset("option", "disabled", isNull(entityPtr));
+    },
+
+    onMultiSelect : function()
+    {
+        this.ui.deleteButton.button("option", "disabled", true);
     },
 
     onPanelsSwitch : function(panelName)

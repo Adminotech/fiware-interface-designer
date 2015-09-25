@@ -316,6 +316,45 @@ var AttributeChangeCommand = ICommand.$extend(
     },
 });
 
+var MultiTransformCommand = ICommand.$extend(
+{
+    __init__ : function(states)
+    {
+        this.$super("* transform " + states.length + " entity(s)");
+        this.states = [];
+        for (var i = states.length - 1; i >= 0; i--)
+        {
+            this.states.push({
+                id : states[i].target.parentEntity.id,
+                before: states[i].before,
+                after: states[i].after
+            });
+        }
+    },
+
+    exec : function()
+    {
+        for (var i = this.states.length - 1; i >= 0; i--)
+        {
+            var id = this.states[i].id;
+            var entity = Tundra.scene.entityById(id);
+            if (entity && entity.placeable)
+                entity.placeable.transform = this.states[i].after;
+        }
+    },
+
+    undo : function()
+    {
+        for (var i = this.states.length - 1; i >= 0; i--)
+        {
+            var id = this.states[i].id;
+            var entity = Tundra.scene.entityById(id);
+            if (entity && entity.placeable)
+                entity.placeable.transform = this.states[i].before;
+        }
+    }
+});
+
 var CreatePrimitiveCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, primitiveType, meshRef)
@@ -437,6 +476,7 @@ var TundraMouseEvent = MouseEventWrapper.$extend(
         this.targetId = mouseEvent.targetId;
         this.targetNodeName = mouseEvent.targetNodeName;
         this.originalEvent = mouseEvent.originalEvent;
+        this.shiftPressed = Tundra.input.keyboard.pressed["shift"];
     }
 });
 
@@ -1254,6 +1294,9 @@ var TundraEditor = IEditor.$extend(
     initTransformEditor : function()
     {
         this.transformEditor = Tundra.Classes.PlaceableUtils.Gizmo;
+        Tundra.events.subscribe("TransformEditor.MultiTransform", function(states) {
+            this.multiTransformCommand(states);
+        }.bind(this));
     },
 
     createPrimitive : function(type)
@@ -1334,6 +1377,11 @@ var TundraEditor = IEditor.$extend(
     changeAttributeCommand : function(attributePtr, newValue)
     {
         this.undoStack.pushAndExec(new AttributeChangeCommand(TundraEditor.scene, attributePtr, newValue));
+    },
+
+    multiTransformCommand : function(states)
+    {
+        this.undoStack.pushCommand(new MultiTransformCommand(states));
     },
 
     save : function(filename)
