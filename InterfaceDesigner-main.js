@@ -247,7 +247,7 @@ var SceneWrapper = IWrapper.$extend(
         @param {number} [y] The Y screen coordinate. If left out, it will be taken from the current mouse position.
         @param {number} [selectionLayer=1] Selection layer that the objects will be checked for.
         @virtual
-        @return {RaycastResult} - A {@link RaycastResult} object that contains information about the 3D object that has been intersected with the ray.
+        @return {RaycastResultWrapper} - A {@link RaycastResultWrapper} object that contains information about the 3D object that has been intersected with the ray.
     */
     doRaycast : function(x, y, selectionLayer) {},
 
@@ -945,8 +945,8 @@ var MouseEventWrapper = IEvent.$extend(
     }
 });
 
-var RaycastResult = Class.$extend(
-/** @lends RaycastResult.prototype */
+var RaycastResultWrapper = Class.$extend(
+/** @lends RaycastResultWrapper.prototype */
 {
     /**
         A raycast result object.
