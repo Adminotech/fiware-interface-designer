@@ -9,9 +9,8 @@ define([
         "core/scene/AttributeChange",
         "core/math/Transform",
         "core/frame/AsyncHelper",
-        "application/editor/InterfaceDesigner-main",
-        "application/editor/lib/jquery.ui-contextmenu.min"
-    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, AsyncHelper, _Editor, _jquicm) {
+        "application/editor/InterfaceDesigner-main"
+    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, AsyncHelper, _Editor) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -1117,7 +1116,7 @@ var TundraAttribute = AttributeWrapper.$extend(
     }
 });
 
-var TundraRaycastResult = RaycastResult.$extend(
+var TundraRaycastResult = RaycastResultWrapper.$extend(
 {
     __init__ : function(raycastResult)
     {
@@ -1463,7 +1462,7 @@ var EditorApplication = IApplication.$extend(
         this.started = true;
 
         IApplication.loadDependencies(this,
-            "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js")
+            "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js", "lib/jquery.ui-contextmenu.min.js")
         .done(function()
         {
             this.editor = new TundraEditor({
