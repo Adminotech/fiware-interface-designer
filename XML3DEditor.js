@@ -1170,7 +1170,7 @@ var XML3DAttribute = AttributeWrapper.$extend(
     }
 });
 
-var XML3DRaycastResult = RaycastResult.$extend(
+var XML3DRaycastResult = RaycastResultWrapper.$extend(
 {
     __init__ : function(hitNode)
     {
