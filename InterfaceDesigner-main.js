@@ -1,26 +1,97 @@
+/**
+    Global available functions. Not an actual object, used only to store all the globally available methods and variables for documentation purposes.
+    @class (global)
+*/
+
+/**
+    Checks if the object is null or undefined
+    @function
+    @memberof (global)
+    @param {*} ptr The object to be checked
+    @return {boolean} - true if null or undefined, false otherwise
+    @example
+    * if (isNull(someObject))
+    *     console.log("someObject is null");
+*/
 function isNull(ptr)
 {
     return (ptr === undefined || ptr === null);
 }
 
+/**
+    Checks if the object is not null nor undefined
+    @function
+    @memberof (global)
+    @param {*} ptr The object to be checked
+    @return {boolean} - true if not null nor undefined, false otherwise
+    @example
+    * if (isNotNull(someObject))
+    *     console.log("someObject is not null");
+*/
 function isNotNull(ptr)
 {
     return !isNull(ptr);
 }
 
-var IWrapper = Class.$extend(
+/**
+    Main method for wrapping.<br>
+    For better performance, use this method when wrapping objects from the underlying system. This will create an instance of the wrapped object, or return an existing one.
+    @function
+    @memberof (global)
+    @param {*} instanceType The class that the instance be made of.
+    @param {*} ptr The object that should be wrapped
+    @param {...*} [arguments] The arguments that the constructor of `instanceType` be called with
+    @return {object} - Wrapped object
+    @example
+    * var object = new SomeObject();
+    * var wrappedObject = __(SomeObject, object, params);
+*/
+
+function __()
 {
+    var instanceType = arguments[0];
+    var ptr = arguments[1];
+    if (ptr.InterfaceDesignerWrapper == undefined)
+    {
+        var args = [].slice.call(arguments, 1);
+        var instance = Object.create(instanceType.prototype);
+        instanceType.apply(instance, args);
+        ptr.InterfaceDesignerWrapper = instance;
+        return instance;
+    }
+    else
+        return ptr.InterfaceDesignerWrapper;
+}
+
+var IWrapper = Class.$extend(
+/** @lends IWrapper.prototype */
+{
+    /**
+        Main wrapper interface. Every object in the interface designer is descendant of IWrapper.
+        Provides the pointer to the main wrapped object, as well as registers and fires callbacks.
+        @constructs
+    */
     __init__ : function()
     {
         this._ptr = null;
         this.callbacks = {};
     },
 
+    /**
+        Checks if the main wrapped object has expired, i.e. the pointer is not valid anymore
+        @return {boolean}
+    */
     expired : function()
     {
         return isNull(this._ptr);
     },
 
+    /**
+        Registers a callback for a custom event of your choice
+        @param {string} eventType The type of event being registered
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {Function} callback The callback to be called when the 'eventType' event is fired
+    */
     registerCallback : function(eventType, context, callback)
     {
         if (isNull(this.callbacks[eventType]))
@@ -32,11 +103,19 @@ var IWrapper = Class.$extend(
         });
     },
 
+    /**
+        Checks if a callback exists for `eventType`.
+        @param {string} eventType The type of event being checked
+        @return {boolean} - `true` if at least one callback has been registered, `false` otherwise
+    */
     isRegistered : function(eventType)
     {
         return (isNotNull(this.callbacks[eventType]) && this.callbacks[eventType].length !== 0);
     },
 
+    /**
+        Unregisters all callbacks.
+    */
     unregisterAll : function()
     {
         for (var i in this.callbacks)
@@ -45,7 +124,12 @@ var IWrapper = Class.$extend(
         this.callbacks = {};
     },
 
-    callback : function(eventType, arg, arg1, arg2, arg3, arg4)
+    /**
+        Executes the custom event `eventType`
+        @param {string} eventType The type of event executed
+        @param {...any} [arguments] The arguments that this callback needs to be called with
+    */
+    callback : function(eventType)
     {
         if (isNull(this.callbacks[eventType]))
             return;
@@ -54,203 +138,715 @@ var IWrapper = Class.$extend(
         if (allRegistered.length == 0)
             return;
 
+        var args = [].slice.call(arguments, 1);
         for (var i = 0; i < allRegistered.length; i++)
         {
             var context = allRegistered[i].context;
             var callback = allRegistered[i].callback;
 
-            callback.call(context, arg, arg1, arg2, arg3, arg4);
+            callback.apply(context, args);
         }
     }
 });
 
 var SceneWrapper = IWrapper.$extend(
+/** @lends SceneWrapper.prototype */
 {
+    /**
+        Wrapper interface for the underlying scene object.<br>
+        The scene object should provide access to manipulating the scene, such as entities and components, as well as scene events such as entity / component / attribute changes.
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function()
     {
         this.$super();
+        /**
+            String for displaying the entities in UI
+            @type {string}
+            @default "entity"
+            @virtual
+        */
         this.entityString = "entity";
+
+        /**
+            String for displaying the components in UI
+            @type {string}
+            @default "component"
+            @virtual
+        */
         this.componentString = "component";
     },
 
-    // Main scene methods
-    // pure virtual
+    /**
+        Deserialize a scene described as JSON object.<br>
+        The implementations of this method should re-create a whole scene from a JSON string.
+        @param {string} jsonObject The JSON as string
+        @virtual
+    */
     deserializeFrom : function(jsonObject) {},
+
+
+    /**
+        Returns all entities present in the scene at the moment.<br>
+        The implementation should return objects that inherit {@link EntityWrapper}
+        @virtual
+        @return {Array} - Array of {@link EntityWrapper} objects.
+    */
     entities : function() {},
+
+    /**
+        Returns the entity for the given `entityId`.<br>
+        The implementation should return an object that inherits {@link EntityWrapper}
+        @param {number} entityId The ID of the entity to be queried
+        @virtual
+        @return {?EntityWrapper} - The entity with id `entityId` or `null` if no such entity exists.
+    */
     entityById : function(entityId) {},
+
+    /**
+        Creates an entity.<br>
+        The implementation should create an entity in the underlying system, then return a wrapped object that inherits {@link EntityWrapper}
+        @param {number} id A unique ID of the entity to be created. By agreement, a value of 0 should mean that this ID should be generated
+        @param {string[]} [components] An array of component type names
+        @param {number} [change=0] Enumeration value of how the scene should react on the change when synchronization is implemented also.
+        @param {boolean} [replicated=true] If this entity should be replicated to the server in systems where synchronization is implemented.
+        @param {boolean} [componentsReplicated=true] If this entity's components should be replicated to the server in systems where synchronization is implemented.
+        @virtual
+        @return {?EntityWrapper} - The new created entity wrapper object.
+    */
     createEntity : function(id, components, change, replicated, componentsReplicated) {},
+
+    /**
+        Removes an entity by given ID.<br>
+        The implementation should remove the entity in the underlying system
+        @param {number} entityId The ID of the entity to be removed
+        @virtual
+    */
     removeEntity : function(entityId) {},
+
+    /**
+        Returns a list of components that are available in the underlying system.<br>
+        The implementation should get all component types from the underlying system and push them in an array.onization is implemented.
+        @virtual
+        @return {string[]} - A list of the component type names available.
+    */
     registeredComponents : function() {},
+
+    /**
+        Returns if the underlying system allows components that share the same name.
+        @virtual
+        @return {boolean} - `true` if components can share a name, `false` otherwise
+    */
     doesAllowSameNamedComponents : function() {},
+
+    /**
+        Perform a raycast.<br>
+        The implementation of this method should execute a raycast on the underlying system's renderer.
+        @param {number} [x] The X screen coordinate. If left out, it will be taken from the current mouse position.
+        @param {number} [y] The Y screen coordinate. If left out, it will be taken from the current mouse position.
+        @param {number} [selectionLayer=1] Selection layer that the objects will be checked for.
+        @virtual
+        @return {RaycastResult} - A {@link RaycastResult} object that contains information about the 3D object that has been intersected with the ray.
+    */
     doRaycast : function(x, y, selectionLayer) {},
-    componentNameWithPrefix : function(componentName) {},
-    componentNameInHumanFormat : function(typeName) {},
+
+    /**
+        Adds a prefix to the component type name.<br>
+        The default implementation is that it will return the same component name that is provided as argument.<br>
+        If the underlying system uses prefixes to differ component type names, this method should be implemented to reflect that.
+        @param {string} componentName The name of the component
+        @virtual
+        @return {string} - Component name with prefix
+    */
+    componentNameWithPrefix : function(componentName)
+    {
+        return componentName;
+    },
+
+    /**
+        Removes a prefix, or modifies the original component type name to be in human-readable format.<br>
+        The default implementation is that it will return the same component type name that is provided as argument.<br>
+        If the underlying system uses prefixes or other means to differ component type names, this method should be implemented to trim out the extra.
+        @param {string} componentName The name of the component
+        @virtual
+        @return {string} - Component name with prefix
+    */
+    componentNameInHumanFormat : function(typeName)
+    {
+        return typeName;
+    },
+
+    /**
+        Returns an attribute name from given attribute type ID.<br>
+        The implementation of this method should provide mapping from attribute type unique ID, to a human-readable attribute name string
+        @param {number} attrTypeId The attribute type ID
+        @virtual
+        @return {string} - Attribute name
+    */
     attributeTypeToName : function(attrTypeId) {},
+
+    /**
+        Returns a list of all attribute type IDs.<br>
+        The implementation of this method should provide a list of all attribute type IDs that are used from the underlying system.
+        @virtual
+        @return {number[]} - A list of attribute IDs
+    */
     attributeTypeIds : function() {},
+
+    /**
+        Resets the scene.<br>
+        The implementation of this method should clear, i.e. remove everything from the scene in the underlying system.
+        @virtual
+    */
+
     reset : function() {},
+
+    /**
+        Unsubscribe from a scene event.<br>
+        The implementation of this method should unsubscribe from the scene events using the `subscription` object provided, if such mechanism is used.
+        @param {object} subscription The subscription information.
+        @virtual
+    */
     unsubscribe : function(subscription) {},
 
-    // virtual
+    /**
+        Returns if the attribute for a given type ID is an atomic value (not array, or object etc). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is atomic.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if atomic, false otherwise
+    */
     isAttributeAtomic : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a boolean value (true or false). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a boolean.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if boolean, false otherwise
+    */
     isAttributeBool : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is an array. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is an array.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if array, false otherwise
+    */
     isAttributeArray : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a Color object. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a color object.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if Color, false otherwise
+    */
     isAttributeColor : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a Transform object. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a Transform object.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if Transform, false otherwise
+    */
     isAttributeTransform : function(attrTypeId)
     {
         return false;
     },
 
+    /**
+        Returns if the attribute for a given type ID is a tuple of n-elements (commonly referred as Vector2, Vector3 etc). The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a tuple.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if tuple, false otherwise
+    */
     isAttributeTuple : function(attrTypeId)
     {
         return 0;
     },
 
+    /**
+        Returns if the attribute for a given type ID is an enumerated value. The default implementation returns always false.<br>
+        The implementation of this method should return a boolean if the attribute is a enumeration.
+        @param {number} attrTypeId The attribute type ID.
+        @virtual
+        @return {boolean} - true if enumeration, false otherwise
+    */
     isAttributeEnum : function(attrTypeId)
     {
         return false;
     },
 
-    // Events
+    /**
+        Registers a callback for an 'entity created' event.<br>
+        The implementation of this method should internally subscribe to the 'entity created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     entityCreated : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'entity removed' event.<br>
+        The implementation of this method should internally subscribe to the 'entity removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     entityRemoved : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'component created' event.<br>
+        The implementation of this method should internally subscribe to the 'component created' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     componentCreated : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'component removed' event.<br>
+        The implementation of this method should internally subscribe to the 'component removed' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     componentRemoved : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'attribute change' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute change' event internally using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     attributeChanged : function(context, callback) {},
 
     // Log channels
+    /**
+        Log info on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logInfo : function(text) {},
+    /**
+        Log warning on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logWarning : function(text) {},
+    /**
+        Log error on developer console
+        @virtual
+        @param {string} text The text to be printed in the console
+    */
     logError : function(text) {}
 });
 
 
 var EntityWrapper = IWrapper.$extend(
+/** @lends EntityWrapper.prototype */
 {
+    /**
+        Wrapper interface for an entity object.
+        The entity object should provide access to manipulating individual entities and its components.
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function(id, name, isLocal, isTemporary)
     {
         this.$super();
 
+        /**
+            Unique ID of the entity.
+            @type {number}
+            @default -1
+        */
         this.id = isNull(id) ? -1 : id;
+        /**
+            Entity name.
+            @type {string}
+            @default ""
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Local or replicated entity.
+            @type {boolean}
+            @default false
+        */
         this.local = isLocal;
+
+        /**
+            Temporary entity
+            @type {boolean}
+            @default false
+        */
         this.temporary = isTemporary;
     },
 
-    // virtual
+    /**
+        Returns the parent ID of this entity, or null if not parented
+        @virtual
+        @return {?number} - The parent entity ID
+    */
     parentId : function()
     {
         return null;
     },
 
+    /**
+        Checks if this entity is ancestor of `entityPtr`.<br>
+        @param {EntityWrapper} entityPtr The potential ancestor to be checked
+        @virtual
+        @return {boolean} - true if entity is ancestor of `entityPtr`, false otherwise
+    */
     isAncestorOf : function(entityPtr)
     {
         return false;
     },
 
-    // pure virtual
+    /**
+        Serialize this entity into a JSON string.<br>
+        The implementation should take care of the serialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
+        @virtual
+        @return {string} - A stringified JSON from this entity
+    */
     serialize : function() {},
-    deserialize : function(jsonObject) {},
-    setName : function(name) {},
-    getName : function() {},
-    numberOfComponents : function() {},
-    components : function() {},
-    createComponent : function(typeName, name, isLocal) {},
-    hasComponent : function(type, name) {},
-    getComponent : function(type, name) {},
-    componentById : function(componentId) {},
-    removeComponent : function(componentId) {},
 
-    // Events
-    componentCreated : function(context, callback) {},
-    componentRemoved : function(context, callback) {}
+    /**
+        Deserializes given JSON string to this entity.<br>
+        The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link EntityWrapper} description.
+        @param {string} jsonObject The JSON string
+        @virtual
+    */
+    deserialize : function(jsonObject) {},
+
+    /**
+        Sets the entity name.<br>
+        @param {string} name The desired name for this entity
+        @virtual
+    */
+    setName : function(name) {},
+
+    /**
+        Returns the entity name.<br>
+        @return {string} - The current name for this entity
+        @virtual
+    */
+    getName : function() {},
+
+    /**
+        Returns the number of components that this entity has.<br>
+        @return {number} - The number of components
+        @virtual
+    */
+    numberOfComponents : function() {},
+
+    /**
+        Returns an array of all components that this entity has.<br>
+        @return {ComponentWrapper[]}
+        @virtual
+    */
+    components : function() {},
+
+    /**
+        Creates a component and sets this entity as its parent.<br>
+        The implementation of this method should internally create a component to this entity.
+        @param {string} typeName The type name for this component.
+        @param {string} [name] The name for the component.
+        @param {boolean} [isLocal=false] Set to true if the component is to be created local only, meaning that it won't be sent to the server if synchronization is implemented.
+        @return {?ComponentWrapper} - The new created component, or null if creation fails
+        @virtual
+    */
+    createComponent : function(typeName, name, isLocal) {},
+
+    /**
+        Checks if the component with given type and name exists.<br>
+        @param {string} type The type name for this component.
+        @param {string} [name] The name for the component.
+        @return {boolean} -
+        @virtual
+    */
+    hasComponent : function(type, name) {},
+
+    /**
+        Retrieve a component with given type and name.<br>
+        @param {string} type The type name for this component.
+        @param {string} [name] The name for the component.
+        @return {?ComponentWrapper} - The component, or null if not found
+        @virtual
+    */
+    getComponent : function(type, name) {},
+
+    /**
+        Retrieve a component with given unique ID.<br>
+        @param {number} componentId The ID for the component.
+        @return {?ComponentWrapper} - The component, or null if not found
+        @virtual
+    */
+    componentById : function(componentId) {},
+
+    /**
+        Remove a component with given unique ID.<br>
+        @param {number} componentId The ID for the component.
+        @virtual
+    */
+    removeComponent : function(componentId) {},
 });
 
 var ComponentWrapper = IWrapper.$extend(
+/** @lends ComponentWrapper.prototype */
 {
+    /**
+        Wrapper interface for a component object.
+        The component object should provide access to manipulating component attributes and other options.
+        @constructs
+        @extends IWrapper
+    */
     __init__: function(id, name, type, parentId)
     {
         this.$super();
 
+        /**
+            Unique ID of the component
+            @type {number}
+            @default -1
+        */
         this.id = isNull(id) ? -1 : id;
+
+        /**
+            Name of the component
+            @type {string}
+            @default ""
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Type name of the component
+            @type {string}
+            @default ""
+        */
         this.typeName = isNull(type) ? "" : type;
+
+        /**
+            Parent entity ID of the component
+            @type {number}
+        */
         this.pId = parentId;
     },
 
+    /**
+        Returns this component's parent entity unique ID.<br>
+        @return {number} - The ID of the parent.
+        @virtual
+    */
     parentId : function()
     {
         return this.pId;
     },
 
+    /**
+        Returns the component name.<br>
+        @return {string} - The current name for this component
+        @virtual
+    */
     getName : function()
     {
         return this.name;
     },
 
-    // pure virtual
+    /**
+        Serialize this component into a JSON string.<br>
+        The implementation should take care of the serialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
+        @virtual
+        @return {string} - A stringified JSON from this component
+    */
     serialize : function() {},
+
+    /**
+        Deserializes given JSON string to this component.<br>
+        The implementation should take care of the deserialization in a way that will ensure it will stick to the {@link ComponentWrapper} description.
+        @param {string} jsonObject The JSON string
+        @virtual
+    */
     deserialize : function(jsonObject) {},
+
+    /**
+        Returns if the component is dynamic, i.e. its attributes can be added / removed on demand.<br>
+        @return {boolean} - true if dynamic component, false otherwise
+        @virtual
+    */
     isDynamic : function() {},
+
+    /**
+        Mark this component a temporary. A temporary component will not be saved when saving the whole scene into a file
+        @param {boolean} temporary true if this component should be temporary, false othewise
+        @virtual
+    */
     setTemporary : function(temporary) {},
+
+    /**
+        Returns all attributes of this component
+        @return {AttributeWrapper[]}
+        @virtual
+    */
     attributes : function() {},
+
+    /**
+        If this component is dynamic, an attribute can be created by calling this function
+        @param {number} typeId The type ID of the attribute that should be created
+        @param {string} name A unique name for the new attribute
+        @return {boolean} - true if the attribute was successfully created, false if not or if component is not dynamic
+        @virtual
+    */
     createAttribute : function(typeId, name) {},
+
+    /**
+        Gets an attribute by name
+        @param {string} name The name for the attribute
+        @return {?AttributeWrapper} - The attribute, or null if not found
+        @virtual
+    */
     attributeByName : function(name) {},
+
+    /**
+        Gets an attribute by index
+        @param {number} index The index for the attribute
+        @return {?AttributeWrapper} - The attribute, or null if not found
+        @virtual
+    */
     getAttributeByIndex : function(index) {},
+
+    /**
+        Removes an attribute by index
+        @param {number} index The index for the attribute to be removed
+        @return {boolean} - true if the attribute was successfully removed, false if not or if component is not dynamic
+        @virtual
+    */
     removeAttribute : function(index) {},
 
+    /**
+        Registers a callback for an 'attribute added' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute added' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     onAttributeAdded : function(context, callback) {},
-    onAttributeChanged : function(context, callback) {},
+
+    /**
+        Registers a callback for an 'attribute removed' event.<br>
+        The implementation of this method should internally subscribe to the 'attribute removed' event internally to this component, using the {@link IWrapper} methods for callbacks, and execute the callback when the underlying system fires the event.
+        @param {object} context The object as context.
+        @param {function} callback The callback to be called.
+        @virtual
+        @return {?object} - A subscription object if available.
+    */
     onAttributeAboutToBeRemoved : function(context, callback) {}
 
 });
 
 var AttributeWrapper = IWrapper.$extend(
+/** @lends AttributeWrapper.prototype */
 {
+    /**
+        Wrapper interface for an attribute object.
+        The attribute object should provide access to manipulating values of attributes.
+        @param {number} index The index of this attribute. Index is the position where this attribute resides in the component
+        @param {number} typeId The type ID of the attribute
+        @param {string} name The name of the attribute
+        @param {ComponentWrapper} parent The parent component of this attribute
+        @constructs
+        @extends IWrapper
+    */
     __init__ : function(index, typeId, name, parent)
     {
         this.$super();
 
+        /**
+            Type ID of the attribute
+            @type {number}
+        */
         this.typeId = typeId;
+
+        /**
+            Name of the attribute
+            @type {string}
+            @default ""
+        */
         this.name = isNull(name) ? "" : name;
+
+        /**
+            Attribute index
+            @type {number}
+        */
         this.index = index;
+
+        /**
+            The component that owns the attribute
+            @type {ComponentWrapper}
+        */
         this.owner = parent;
     },
 
+    /**
+        Returns the valid values that this attribute can accept. The default implementation returns null<br>
+        The implementation of this method should check with the underlying system the allowed values for this attribute, and return them in an array.
+        @return {*} - values array of valid values. Can be any type
+    */
     validValues : function()
     {
         return null;
     },
 
-    // pure virtual
+    /**
+        Get the raw value of this attribute
+        @return {*} - The value of this attribute
+    */
     get : function() {},
+
+
+    /**
+        Sets the raw value of this attribute
+        @param {*} value The value to be set
+    */
     set : function(value) {}
 });
 
 var IEvent = Class.$extend(
+/** @lends IEvent.prototype */
 {
-    __classvars__ : 
-    {
-        MouseEvent : 0,
-        KeyEvent : 1,
-        ResizeEvent : 2
-    },
 
+    /**
+        A wrapper for events. Any input event wrapper should inherit this class.
+        @param {number} eventType The event type, see the static members
+        @param {number} [id] Unique ID for this event
+        @constructs
+    */
     __init__ : function(eventType, id)
     {
         this.eventType = eventType;
@@ -259,11 +855,44 @@ var IEvent = Class.$extend(
         this.targetId = "";
         this.targetNodeName = "";
         this.originalEvent = null;
+        this.suppressed = false
+    },
+
+    __classvars__ :
+    {
+        /**
+            Mouse event
+            @static
+            @type {number}
+            @default 0
+        */
+        MouseEvent : 0,
+        /**
+            Key event
+            @static
+            @type {number}
+            @default 1
+        */
+        KeyEvent : 1,
+        /**
+            Resize event
+            @static
+            @type {number}
+            @default 2
+        */
+        ResizeEvent : 2
     }
 });
 
 var KeyEventWrapper = IEvent.$extend(
+/** @lends KeyEventWrapper.prototype */
 {
+    /**
+        A wrapper for key events. Any key event wrapper should inherit this class.
+        @param {number} [id] Unique ID for this event
+        @constructs
+        @extends IEvent
+    */
     __init__ : function(id)
     {
         this.$super(IEvent.KeyEvent, id);
@@ -275,6 +904,11 @@ var KeyEventWrapper = IEvent.$extend(
         this.pressed = {};
     },
 
+    /**
+        Returns if the given keyboard `key` is pressed
+        @param {string} key The key to be checked
+        @return {boolean} - true if the key is pressed
+    */
     isPressed : function(key)
     {
         if (isNotNull(this.pressed[key]))
@@ -285,7 +919,14 @@ var KeyEventWrapper = IEvent.$extend(
 });
 
 var MouseEventWrapper = IEvent.$extend(
+/** @lends MouseEventWrapper.prototype */
 {
+    /**
+        A wrapper for mouse events. Any mouse event wrapper should inherit this class.
+        @param {number} [id] Unique ID for this event
+        @constructs
+        @extends IEvent
+    */
     __init__ : function(id)
     {
         this.$super(IEvent.MouseEvent, id);
@@ -305,206 +946,124 @@ var MouseEventWrapper = IEvent.$extend(
 });
 
 var RaycastResult = Class.$extend(
+/** @lends RaycastResult.prototype */
 {
+    /**
+        A raycast result object.
+        @constructs
+    */
     __init__ : function()
     {
+        /**
+            A pointer to the entity wrapper object that has been hit. Can be null
+            @var {?EntityWrapper}
+        */
         this.entity = null;
+
+        /**
+            A pointer to the component wrapper object (for example a mesh, billboard etc) that has been hit. Can be null
+            @var {?ComponentWrapper}
+        */
         this.component = null;
+
+        /**
+            A 3-tuple that represents the position of the location where it hit the entity.
+            @var {*}
+        */
         this.pos = null;
+
+        /**
+            Distance from screen coordinates to the entity that has been hit by the raycasting.
+            @var {number}
+        */
         this.distance = -1;
+
+        /**
+            Index of the submesh that has been hit by the raycasting.
+            @var {number}
+        */
         this.submesh = -1;
+
+        /**
+            Face index that has been hit by the raycasting.
+            @var {number}
+        */
         this.faceIndex = -1;
+
+        /**
+            Pointer to the original ray used in the casting.
+            @var {*}
+        */
         this.ray = null;
     }
 });
 
-var IEditor = IWrapper.$extend(
+var ITransformEditor = Class.$extend(
+/** @lends ITransformEditor.prototype */
 {
-    __classvars__ : 
+    /**
+        Base implementation of ITransformEditor.<br>
+        This implementation does nothing. Derived implementations should extend this class by adding their own functionality
+        @constructs
+    */
+    __init__ : function()
     {
-        scene : null, // 'Static' object to the scene
-        Instance : null // 'Static' object of the editor. Use with caution
+
     },
 
-    __init__ : function(type)
+    /**
+        Sets the target entity whose transform should be manipulated
+        @param {EntityWrapper} entityPtr The entity to be manipulated
+    */
+    setTargetEntity : function(entityPtr)
     {
-        this.$super();
-        IEditor.Instance = this;
-        this.type = type;
 
-        this.ui = {};                                       // JSON
-        this.enabled = false;
-        this.isECEditor = false;
-        this.noSelectionStr = "<i>(No entities selected)</i>";     // String
-        this.sceneEvents = [];
-        this.componentEvents = [];                         // Array of EventWrapper
-        this.transformEditor = null;
-
-        this.accordionHistory = {};
-
-        this.toggleEditorShortcut = {
-            meta : "shift",
-            key : "s",
-        };
-        this.switchPanelsShortcut = {
-            meta : "shift",
-            key : "e"
-        };
-
-        // The current object in editing
-        this.currentObject = null;
-
-        this.undoStack = new UndoRedoManager();
-        this.toolkit = new ToolkitManager();
-
-        this._initUi();
-        this.toolkit.initUi();
-
-        if (this.isConnected())
-            this._onClientConnected();
-        else
-            this.registerClientConnectedCallback(this, this._onClientConnected);
     },
 
-    _onClientConnected : function()
+    /**
+        Set the mode of transform. Usually values should be "translation", "rotate" and "scale"
+        @param {string} mode
+    */
+    setMode : function(mode)
     {
-        this.registerKeyEventCallback(this, this._onKeyEvent);
-        this.registerMouseEventCallback(this, this._onMouseEvent);
-        IEditor.scene = this.registerSceneObject();
 
-        this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
     },
 
-    isEditorEnabled : function()
+    /**
+        Clears the selection
+    */
+    clearSelection : function()
     {
-        return this.enabled;
+
+    }
+});
+
+var IPanel = Class.$extend(
+/** @lends IPanel.prototype */
+{
+    /**
+        IPanel interface for panels that can be registered into the editor.<br>
+
+        @constructs
+    */
+    __init__ : function(label, options)
+    {
+        options = options || {};
+        this.ui = {};
+        this.label = label;
+        this.name = label.replace(/\s+/g, '');
+        this.panelWidth = options.panelWidth || 420;
+        this.panelHeight = options.panelHeight || IEditor.Instance.height();
     },
 
-    /* virtual */ 
-    isConnected : function()
+    initUi : function()
     {
-        return true;
-    },
-
-    width : function()
-    {
-        return -1;
-    },
-
-    height : function()
-    {
-        return -1;
-    },
-
-    taskbar : function()
-    {
-        return null;
-    },
-
-    /* pure virtual */
-    container : function() {},
-    addWidget : function(element) {},
-    registerSceneObject : function() {},
-    registerClientConnectedCallback : function(context, callback) {},
-    registerKeyEventCallback : function(context, callback) {},
-    registerMouseEventCallback : function(context, callback) {},
-    registerResizeEventCallback : function(context, callback) {},
-
-    addEntityCommand : function(components, entityName) {},
-    removeEntityCommand : function(entityPtr) {},
-    addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
-    removeComponentCommand : function(componentPtr) {},
-    addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
-    removeAttributeCommand : function(attributePtr) {},
-    changeAttributeCommand : function(attributePtr, value) {},
-
-    initTransformEditor : function() {},
-    createPrimitive : function(type) {},
-    createMovable : function() {},
-    createDrawable : function() {},
-    createScript : function() {},
-
-    showGrid : function() {},
-    hideGrid : function() {},
-    showAxes : function() {},
-    hideAxes : function() {},
-
-    quickCreateEntity : function(type)
-    {
-        if (isNull(type))
-            return;
-
-        if (type === "Drawable")
-            this.createDrawable();
-        else if (type === "Movable")
-            this.createMovable();
-        else if (type === "Script")
-            this.createScript();
-        else
-            this.logError("quickCreate: Unknown type: " + text);
-    },
-
-    _initUi : function()
-    {
-        // Invalid data CSS class, for marking up invalid values on input boxes
-        var invalidDataClass = $("<style/>");
-        invalidDataClass.text(".invalidData { border : 2px solid red; }");
-
-        // Some style for context menu items
-        var menuItemsClass = $("<style/>");
-        menuItemsClass.text(".sceneTree-contextMenu-itemsClass a { \
-            font-family: Arial; \
-            font-size :  12px; \
-            background-color  : #F2F2F2; \
-            color             : #333333; \
-            text-decoration   : none; \
-            display           : block; \
-            margin : 10; \
-            padding           : 5; \
-            }\
-        .sceneTree-contextMenu-itemsClass a:hover { \
-            background-color  : #000000; \
-            color             : #FFFFFF; }");
-
-        var accordionStyle = $("<style/>"); // #F7EEDC
-        accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
-        .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
-
-        var undoListStyle = "#_toolkit-undoStackButtons .ui-selecting { background: #AAAAAA; } \
-        #_toolkit-undoStackButtons .ui-selected { background: #BBBBBB; color: white; } \
-        #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
-        #_toolkit-undoStackButtons li { margin: 3px; padding: 0.4em; font-size: 1.4em; height: 18px; } ";
-
-        var undoStyleElem = $("<style/>");
-        undoStyleElem.append(undoListStyle);
-
-        $("head").append(invalidDataClass);
-        $("head").append(menuItemsClass);
-        $("head").append(accordionStyle);
-        $("head").append(undoStyleElem);
-        $("body").css("font-size", "12px");
-
-        this.panelWidth = 420;
-        this.panelHeight = this.height();
-
-        var toolbar = this.toolkit.getOrCreateToolbar(this.width() - this.panelWidth);
-
-        this.ui.sceneTree = {};
-        this.ui.ecEditor = {};
-
-        this.ui.sceneTree.panel = $("<div/>");
-        this.ui.sceneTree.panel.attr("id", "scenetree-panel");
-        this.ui.sceneTree.panel.css({
+        this.ui.panel = $("<div/>");
+        this.ui.panel.attr("id", this.name + "-panel");
+        this.ui.panel.css({
             "position"          : "absolute",
-            "top"               : 0,
-            "left"              : 0,
             "height"            : this.panelHeight,
             "width"             : this.panelWidth,
-            "margin"            : 0,
-            "padding"           : 0,
-            "padding-top"       : 0,
-            "padding-bottom"    : 0,
-            "border"            : 0,
             "border-left"       : "1px solid gray",
             "overflow"          : "auto",
             "font-family"       : "Courier New",
@@ -512,61 +1071,85 @@ var IEditor = IWrapper.$extend(
             "color"             : "rgb(50,50,50)",
             "background-color"  : "rgba(248,248,248, 0.5)",
         });
+    },
 
-        this.ui.ecEditor.panel = $("<div/>");
-        this.ui.ecEditor.panel.attr("id", "editor-panel");
-        this.ui.ecEditor.panel.css({
-            "position"          : "absolute",
-            "top"               : 0,
-            "left"              : 0,
-            "height"            : this.panelHeight,
-            "width"             : this.panelWidth,
-            "margin"            : 0,
-            "padding"           : 0,
-            "padding-bottom"    : 0,
-            "border"            : 0,
-            "border-left"       : "1px solid gray",
-            "overflow"          : "none",
-            "font-family"       : "Courier New",
-            "font-size"         : "10pt",
-            "color"             : "rgb(50,50,50)",
-            "background-color"  : "rgba(248,248,248, 0.5)",
-        });
+    show : function()
+    {
+        this.ui.panel.show();
+    },
 
-        this.ui.sceneTree.addEntityButton = $("<button/>", {
+    hide : function()
+    {
+        this.ui.panel.hide();
+    },
+
+    onWindowResize : function(width, height)
+    {
+        var container = $("body");
+        this.ui.panel.css("height", height);
+
+        if (this.ui.panel.is(":visible"))
+        {
+            this.ui.panel.position(
+            {
+                my : "right top",
+                at : "right top",
+                of : container
+            });
+        }
+    }
+});
+
+var SceneTreePanel = IPanel.$extend(
+{
+    __init__ : function(options)
+    {
+        this.$super("scene tree", options);
+        this.fontConfig = options.fontConfig || {};
+    },
+
+    initUi : function()
+    {
+        this.$super();
+
+        var menuItemsClass = $("<style/>");
+        menuItemsClass.text(".contextmenu-z { z-index: 5; font-size: 14px; }");
+        $("head").append(menuItemsClass);
+
+        this.ui.addEntityButton = $("<button/>", {
             id : "st-add-entity-button"
         });
-        this.ui.sceneTree.addEntityButton.css({
+        this.ui.addEntityButton.css({
             "position" : "relative",
             "font-size" : "10px",
             "min-width": "50%"
-        });
-        this.ui.sceneTree.addEntityButton.html("Add new entity...");
-        this.ui.sceneTree.addEntityButton.button({
+        }).css(this.fontConfig);
+        this.ui.addEntityButton.html("Create Entity...");
+        this.ui.addEntityButton.button({
             icons : {
                 primary : "ui-icon-plusthick"
             }
         });
 
-        this.ui.sceneTree.expColButton = $("<button/>", {
+        this.ui.expColButton = $("<button/>", {
             id : "st-expand-collapse-button"
         });
-        this.ui.sceneTree.expColButton.data("toggle", false);
-        this.ui.sceneTree.expColButton.css({
+        this.ui.expColButton.data("toggle", false);
+        this.ui.expColButton.css({
             "position" : "relative",
             "font-size" : "10px",
             "min-width": "49%"
-        });
-        this.ui.sceneTree.expColButton.html("Expand/Collapse");
-        this.ui.sceneTree.expColButton.button({
+        }).css(this.fontConfig);
+        this.ui.expColButton.html("Expand / Collapse");
+        this.ui.expColButton.button({
             icons : {
                 primary : "ui-icon-carat-2-n-s"
             }
         });
 
-        this.ui.sceneTree.buttonsHolder = $("<div/>");
-        this.ui.sceneTree.buttonsHolder.attr("id", "scenetree-buttons");
-        this.ui.sceneTree.buttonsHolder.css({
+        this.ui.buttonsHolder = $("<div/>");
+        this.ui.buttonsHolder.attr("id", "scenetree-buttons");
+        this.ui.buttonsHolder.css({
             "position" : "relative",
             "overflow" : "auto",
             "top" : 10,
@@ -575,9 +1158,9 @@ var IEditor = IWrapper.$extend(
             "padding" : 0
         });
 
-        this.ui.sceneTree.holder = $("<div/>");
-        this.ui.sceneTree.holder.attr("id", "scene-tree-holder");
-        this.ui.sceneTree.holder.css({
+        this.ui.holder = $("<div/>");
+        this.ui.holder.attr("id", "scene-tree-holder");
+        this.ui.holder.css({
             "position" : "relative",
             "top" : 20,
             "left" : 10,
@@ -586,275 +1169,232 @@ var IEditor = IWrapper.$extend(
             "font-size" : "10px",
         });
 
-        this.ui.ecEditor.entityLabel = $("<div/>");
-        this.ui.ecEditor.entityLabel.attr("id", "editor-entity-label");
-        this.ui.ecEditor.entityLabel.css({
-            "position" : "relative",
-            "top" : 5,
-            "left" : 10,
-            "width" : "94%",
-            "height" : "20px",
-            "font-family" : "Verdana",
-            "font-size" : "16px",
-            "text-align" : "center",
-            "border" : "2px dashed #a1a1a1",
-            "padding" : "5px 0 5px 0",
-            "margin" : "0 0 10px 0",
-            "background" : "#DDDDDD",
-            "border-radius" : "10px"
-        });
-        this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
+        this.ui.buttonsHolder.append(this.ui.addEntityButton);
+        this.ui.buttonsHolder.append(this.ui.expColButton);
 
-        this.ui.ecEditor.upButton = $("<button/>", {
-            id : "up-parent-button"
-        });
-        this.ui.ecEditor.upButton.css({
-            "position" : "absolute",
-            "top" : 10,
-            "left" : 20,
-            "font-size" : "10px",
-            "z-index" : 5,
-        })
-        this.ui.ecEditor.upButton.html("Up");
-        this.ui.ecEditor.upButton.button({
-            icons : {
-                primary : "ui-icon-arrowreturnthick-1-n"
-            }
-        });
-
-        this.ui.ecEditor.addCompButton = $("<button/>", {
-            id : "ec-add-component-button"
-        });
-        this.ui.ecEditor.addCompButton.css({
-            "position" : "relative",
-            // "margin-left" : 10,
-            "font-size" : "10px",
-            "min-width": "32%"
-        });
-        this.ui.ecEditor.addCompButton.html("Add new component...");
-        this.ui.ecEditor.addCompButton.button({
-            icons : {
-                primary : "ui-icon-plusthick"
-            }
-        });
-
-        this.ui.ecEditor.expColButton = $("<button/>", {
-            id : "ec-expand-collapse-button"
-        });
-        this.ui.ecEditor.expColButton.data("toggle", false);
-        this.ui.ecEditor.expColButton.css({
-            "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "32%"
-        });
-        this.ui.ecEditor.expColButton.html("Expand/Collapse");
-        this.ui.ecEditor.expColButton.button({
-            icons : {
-                primary : "ui-icon-carat-2-n-s"
-            }
-        });
-
-        this.ui.ecEditor.editCompButton = $("<button/>", {
-            id : "ec-edit-component-button"
-        });
-        this.ui.ecEditor.editCompButton.data("toggle", false);
-        this.ui.ecEditor.editCompButton.css({
-            "position" : "relative",
-            "font-size" : "10px",
-            "min-width": "30%"
-        });
-        this.ui.ecEditor.editCompButton.html("Edit...");
-        this.ui.ecEditor.editCompButton.button({
-            icons : {
-                primary : "ui-icon-pencil",
-                secondary : "ui-icon-locked"
-            }
-        });
-
-        this.ui.ecEditor.buttonsHolder = $("<div/>");
-        this.ui.ecEditor.buttonsHolder.attr("id", "editor-buttons");
-        this.ui.ecEditor.buttonsHolder.css({
-            "position" : "relative",
-            "overflow" : "auto",
-            "top" : 5,
-            "left" : 10,
-            "width" : "95%",
-            "padding" : 0
-        });
-
-        this.ui.sceneTree.buttonsHolder.append(this.ui.sceneTree.addEntityButton);
-        this.ui.sceneTree.buttonsHolder.append(this.ui.sceneTree.expColButton);
-
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.addCompButton);
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.expColButton);
-        this.ui.ecEditor.buttonsHolder.append(this.ui.ecEditor.editCompButton);
-
-        this.ui.sceneTree.panel.append(this.ui.sceneTree.buttonsHolder);
-        this.ui.sceneTree.panel.append(this.ui.sceneTree.holder);
-
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.upButton);
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.entityLabel);
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.buttonsHolder);
-
-        this.ui.ecEditor.holder = $("<div/>");
-        this.ui.ecEditor.holder.attr("id", "editor-component-accordions");
-        this.ui.ecEditor.holder.css({
-            "position"   : "relative",
-            "overflow"   : "auto",
-            "top"        : 15,
-            "left"       : 10,
-            "width"      : "95%",
-            "height"     : this.componentHolderHeight(),
-            "font-size"  : "10px",
-            "padding"    : 0
-        });
-
-        this.ui.ecEditor.panel.append(this.ui.ecEditor.holder);
-
-        this.ui.ecEditor.upButton.hide();
-        this.ui.ecEditor.buttonsHolder.hide();
-        this.ui.sceneTree.panel.hide();
-        this.ui.ecEditor.panel.hide();
-        toolbar.hide();
-
-        this.addWidget(this.ui.sceneTree.panel);
-        this.addWidget(this.ui.ecEditor.panel);
-        this.addWidget(toolbar);
-
-        this.registerResizeEventCallback(this, this._onResizeEvent);
+        this.ui.panel.append(this.ui.buttonsHolder);
+        this.ui.panel.append(this.ui.holder);
+        this.ui.panel.hide();
+        IEditor.Instance.addWidget(this.ui.panel, "right");
 
         this.createContextMenu();
-        this.ui.sceneTree.addEntityButton.click(this, this.onAddEntityClicked);
-        this.ui.sceneTree.expColButton.click(this, this.onSTExpColClicked);
-        this.ui.ecEditor.upButton.click(this, this.onUpButtonClicked);
-        this.ui.ecEditor.addCompButton.click(this, this.onAddComponentClicked);
-        this.ui.ecEditor.editCompButton.click(this, this.onEditButtonClicked);
-        this.ui.ecEditor.expColButton.click(this, this.onECExpColClicked);
+
+        // Events
+        this.ui.addEntityButton.click(this, this.onAddEntityClicked);
+        this.ui.expColButton.click(this, this.onSTExpColClicked);
     },
 
-    _onKeyEvent : function(keyEvent)
+    populateScene : function()
     {
-        var metaToggleEditor = this.toggleEditorShortcut.meta;
-        var keyToggleEditor = this.toggleEditorShortcut.key;
+        var entities = IEditor.scene.entities();
 
-        var metaTogglePanels = this.switchPanelsShortcut.meta;
-        var keyTogglePanels = this.switchPanelsShortcut.key;
+        var sceneRootElem = $("<ul/>",{
+            id : "sceneTree-rootElement"
+        });
+        sceneRootElem.css("text-align", "left");
 
-        if (keyEvent.isPressed(metaToggleEditor) && keyEvent.isPressed(keyToggleEditor))
-            this.toggleEditor();
-        else if (keyEvent.isPressed(metaTogglePanels) && keyEvent.isPressed(keyTogglePanels))
-            this.togglePanels();
-        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("z"))
-            this.undoStack.undo();
-        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("q"))
-            this.undoStack.redo();
-    },
-
-    _onMouseEvent : function(mouseEvent)
-    {
-        if (!this.isEditorEnabled())
-            return;
-
-        if (mouseEvent.targetNodeName !== "canvas" && mouseEvent.targetNodeName !== "xml3d")
-            return;
-
-        if (mouseEvent.type === "press" && mouseEvent.leftDown)
-        {
-            var raycastResult = IEditor.scene.doRaycast(mouseEvent.x, mouseEvent.y);
-            if (isNotNull(raycastResult))
-            {
-                if (isNull(raycastResult.entity) && isNull(this.currentObject))
-                    return;
-
-                if (isNotNull(raycastResult.entity) && isNotNull(this.currentObject))
-                    if (raycastResult.entity.id == this.currentObject.id)
-                        return;
-
-                this.selectEntity(raycastResult.entity);
+        this.ui.holder.append(sceneRootElem);
+        this.ui.holder.fancytree({
+            icons : false,
+            selectMode : 2,
+            select : function(event, data) {
+                console.log(this, event, data);
             }
+        });
+
+        var rootNode = this.ui.holder.fancytree("getRootNode");
+        for (var i = 0; i < entities.length; i++)
+        {
+            var entity = entities[i];
+            this.createTreeItemForEntity(entity, rootNode);
+        }
+    },
+
+    enable : function()
+    {
+        this.populateScene();
+    },
+
+    disable : function()
+    {
+        this.ui.holder.fancytree("destroy");
+        this.ui.holder.empty();
+        this.ui.panel.hide();
+    },
+
+    createContextMenu : function()
+    {
+        this.ui.holder.contextmenu({
+            addClass: "contextmenu-z",
+            css : { color: "red" },
+            delegate: "span.fancytree-node",
+            menu: [
+                {title: "Edit", cmd: "edit", uiIcon: "ui-icon-pencil"},
+                {title: "Delete", cmd: "delete", uiIcon: "ui-icon-trash"},
+            ],
+            select: this.onContextMenuItemSelected.bind(this)
+        });
+    },
+
+    onEntityCreated : function(entityPtr)
+    {
+        var rootNode = null;
+        var parent = entityPtr.parentId();
+        if (isNull(parent))
+            rootNode = this.ui.holder.fancytree("getRootNode");
+        else
+            rootNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + parent);
+
+        this.createTreeItemForEntity(entityPtr, rootNode);
+    },
+
+    onComponentCreated : function(entityPtr, componentPtr)
+    {
+        var treeNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        this.createTreeItemForComponent(componentPtr, treeNode);
+    },
+
+    createTreeItemForEntity : function(entityPtr, parentNode)
+    {
+        var entityNode = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        if (isNotNull(entityNode))
+            return;
+
+        var childNode = parentNode.addChildren({
+            title : IEditor.Instance.getNodeTitleForEntity(entityPtr),
+            key : "sceneNode-" + entityPtr.id
+        });
+
+        var components = entityPtr.components();
+        for (var i = 0; i < components.length; i++)
+            this.createTreeItemForComponent(components[i], childNode);
+    },
+
+    createTreeItemForComponent : function(componentPtr, parentNode)
+    {
+        if (isNull(parentNode))
+            return;
+
+        var fullName = IEditor.Instance.getNodeTitleForComponent(componentPtr);
+        var childNode = parentNode.addChildren({
+            title : fullName,
+            key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
+        });
+    },
+
+    onEntityRemoved : function(entityPtr)
+    {
+        this.removeTreeItem(entityPtr);
+    },
+
+    onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        if (componentPtr.typeName === "Name")
+            this.renameEntityNode(entityPtr, true);
+
+        this.removeTreeItem(entityPtr, componentPtr);
+    },
+
+    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        if (componentPtr.typeName === "Name" && attributeName === "name")
+            this.renameEntityNode(entityPtr);
+    },
+
+    renameEntityNode : function(entityPtr, setUnnamed)
+    {
+        var treeItem = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        if (isNull(treeItem))
+            return;
+
+        treeItem.setTitle(IEditor.Instance.getNodeTitleForEntity(entityPtr, setUnnamed));
+    },
+
+    renameComponentNode : function(componentPtr)
+    {
+        var treeItem = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id);
+        if (isNull(treeItem))
+            return;
+
+        treeItem.setTitle(IEditor.Instance.getNodeTitleForComponent(componentPtr));
+    },
+
+    removeTreeItem : function(entityPtr, componentPtr)
+    {
+        var node = null;
+        if (isNull(componentPtr))
+            node = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
+        else
+            node = this.ui.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
+
+        if (isNotNull(node))
+            node.remove();
+    },
+
+    onContextMenuItemSelected : function(event, ui)
+    {
+        var element = ui.target[0];
+        if (ui.cmd === "edit")
+        {
+            var node = $.ui.fancytree.getNode(element);
+            var target = node.key.split("-");
+
+            var entityId = -1;
+            var componentId = -1;
+            if (target.length >= 2)
+                entityId = parseInt(target[1]);
+            if (target.length >= 3)
+                componentId = parseInt(target[2]);
+
+            var entity = IEditor.scene.entityById(entityId);
+            if (isNotNull(entity))
+                IEditor.Instance.selectEntity(entity, componentId);
+        }
+        else if (ui.cmd === "delete")
+        {
+            var node = $.ui.fancytree.getNode(element);
+            var target = node.key.split("-");
+            var entityId = -1;
+            var componentId = -1;
+            if (target.length >= 2)
+                entityId = parseInt(target[1]);
+            if (target.length >= 3)
+                componentId = parseInt(target[2]);
+
+            var entStr = IEditor.scene.entityString;
+            var compStr = IEditor.scene.componentString;
+            var entity = IEditor.scene.entityById(entityId);
+            if (isNull(entity))
+                return;
             else
-                if (isNotNull(this.transformEditor))
-                    this.transformEditor.clearSelection();
+            {
+                if (componentId !== -1)
+                {
+                    var componentPtr = entity.componentById(componentId);
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveComponent",
+                        "Remove " + compStr,
+                        "Are you sure that you want to remove this " + compStr + "?",
+                        function(){
+                            IEditor.Instance.removeComponentCommand(componentPtr);
+                        });
+
+                    confirmDialog.exec();
+                }
+                else
+                {
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveEntity",
+                        "Remove " + entStr + " with ID " + entityId,
+                        "Are you sure that you want to remove this " + entStr + "?",
+                        function(){
+                            IEditor.Instance.removeEntityCommand(entity);
+                        });
+
+                    confirmDialog.exec();
+                }
+            }
         }
-    },
-
-    _onResizeEvent : function(width, height)
-    {
-        var panelHeight = this.height();
-        var taskbar = this.taskbar();
-        var container = this.container();
-
-        this.ui.sceneTree.panel.css("height", panelHeight);
-        this.ui.ecEditor.panel.css("height", panelHeight);
-
-        if (isNotNull(taskbar))
-        {
-            if (this.ui.sceneTree.panel.is(":visible"))
-                this.ui.sceneTree.panel.position(
-                {
-                    my : "right bottom",
-                    at : "right top",
-                    of : taskbar
-                });
-
-            if (this.ui.ecEditor.panel.is(":visible"))
-                this.ui.ecEditor.panel.position(
-                {
-                    my : "right bottom",
-                    at : "right top",
-                    of : taskbar
-                });
-        }
-        else if (isNotNull(container))
-        {
-            if (this.ui.sceneTree.panel.is(":visible"))
-                this.ui.sceneTree.panel.position(
-                {
-                    my : "right top",
-                    at : "right top",
-                    of : container
-                });
-
-            if (this.ui.ecEditor.panel.is(":visible"))
-                this.ui.ecEditor.panel.position(
-                {
-                    my : "right top",
-                    at : "right top",
-                    of : container
-                });
-        }
-
-        this.ui.ecEditor.holder.css("height", this.componentHolderHeight());
-    },
-
-    onUndoRedoStateChanged : function(undoItems, redoItems, total)
-    {
-        this.toolkit.onUndoRedoStateChanged(undoItems, redoItems, total);
-    },
-
-    componentHolderHeight : function()
-    {
-        return this.ui.ecEditor.panel.height() - (
-            this.ui.ecEditor.entityLabel.height()
-            + this.ui.ecEditor.buttonsHolder.height()
-            + parseInt(this.ui.ecEditor.upButton.css("top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("top"))
-            + parseInt(this.ui.ecEditor.buttonsHolder.css("top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("margin-bottom"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("padding-top"))
-            + parseInt(this.ui.ecEditor.entityLabel.css("padding-bottom")));
-    },
-
-    setSwitchPanelsShortcut : function(meta, key)
-    {
-        this.switchPanelsShortcut.meta = meta;
-        this.switchPanelsShortcut.key = key;
-    },
-
-    setToggleEditorShortcut : function(meta, key)
-    {
-        this.toggleEditorShortcut.meta = meta;
-        this.toggleEditorShortcut.key = key;
     },
 
     onAddEntityClicked : function()
@@ -895,7 +1435,7 @@ var IEditor = IWrapper.$extend(
         var registeredComponents = IEditor.scene.registeredComponents();
 
         for (var i = 0; i < registeredComponents.length; i++)
-            componentNames.push(registeredComponents[i].typeName);
+            componentNames.push(registeredComponents[i].TypeName);
 
         dialog.appendDraggableList("draggableList-components", "Registered components", componentNames);
         dialog.appendDroppable("droppable-components", "Drag the components you want to be included upon creation of this entity", IEditor.scene.doesAllowSameNamedComponents());
@@ -916,6 +1456,185 @@ var IEditor = IWrapper.$extend(
         });
 
         $(this).data("toggle", newToggle);
+    }
+});
+
+var ECEditorPanel = IPanel.$extend(
+{
+    __init__ : function(options)
+    {
+        this.$super("ec editor", options);
+        this.accordionHistory = {};
+        this.componentEvents = [];                         // Array of EventWrapper
+        this.currentObject = null;
+        this.allObjects = [];
+
+        this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
+        this.multiSelectionStr = options.multiSelectionStr || "<i>(Multiple entities selected)</i>";     // String
+        this.fontConfig = options.fontConfig || {};
+    },
+
+    initUi : function()
+    {
+        this.$super();
+
+        var accordionStyle = $("<style/>"); // #F7EEDC
+        accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
+        .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
+        $("head").append(accordionStyle);
+
+        this.ui.entityLabel = $("<div/>");
+        this.ui.entityLabel.attr("id", "editor-entity-label");
+        this.ui.entityLabel.css({
+            "position" : "relative",
+            "top" : 5,
+            "left" : 10,
+            "width" : "94%",
+            "height" : "20px",
+            "color" : "white",
+            "font-family" : "Verdana",
+            "font-size" : "16px",
+            "text-align" : "center",
+            "border" : 3,
+            "padding" : "10px 0px",
+            "margin" : "0 0 10px 0",
+            "background" : "steelblue"
+        });
+        this.ui.entityLabel.html(this.noSelectionStr);
+
+        this.ui.upButton = $("<button/>", {
+            id : "up-parent-button"
+        });
+        this.ui.upButton.css({
+            "position" : "absolute",
+            "top" : 10,
+            "left" : 20,
+            "font-size" : "10px",
+            "z-index" : 5,
+        })
+        this.ui.upButton.html("Up");
+        this.ui.upButton.button({
+            icons : {
+                primary : "ui-icon-arrowreturnthick-1-n"
+            }
+        });
+
+        this.ui.addCompButton = $("<button/>", {
+            id : "ec-add-component-button"
+        });
+        this.ui.addCompButton.css({
+            "position" : "relative",
+            // "margin-left" : 10,
+            "font-size" : "11px",
+            "width": "100%"
+        }).css(this.fontConfig);
+        this.ui.addCompButton.html("Create Component...");
+        this.ui.addCompButton.button({
+            icons : {
+                primary : "ui-icon-plusthick"
+            }
+        });
+
+        this.ui.expColButton = $("<button/>", {
+            id : "ec-expand-collapse-button"
+        });
+        this.ui.expColButton.data("toggle", false);
+        this.ui.expColButton.css({
+            "position" : "relative",
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
+        this.ui.expColButton.html("Expand / Collapse");
+        this.ui.expColButton.button({
+            icons : {
+                primary : "ui-icon-carat-2-n-s"
+            }
+        });
+
+        this.ui.editCompButton = $("<button/>", {
+            id : "ec-edit-component-button"
+        });
+        this.ui.editCompButton.data("toggle", false);
+        this.ui.editCompButton.css({
+            "position" : "relative",
+            "font-size" : "11px",
+            "min-width": "100%"
+        }).css(this.fontConfig);
+        this.ui.editCompButton.html("Edit...");
+        this.ui.editCompButton.button({
+            icons : {
+                primary : "ui-icon-pencil",
+                secondary : "ui-icon-locked"
+            }
+        });
+
+        this.ui.buttonsHolder = $("<div/>");
+        this.ui.buttonsHolder.attr("id", "editor-buttons");
+        this.ui.buttonsHolder.css({
+            "position" : "relative",
+            "overflow" : "hidden",
+            "top" : 5,
+            "left" : 10,
+            "width" : "95%",
+            "padding" : 0
+        });
+
+        this.ui.buttonsHolder.append(this.ui.addCompButton);
+        this.ui.buttonsHolder.append(this.ui.expColButton);
+        this.ui.buttonsHolder.append(this.ui.editCompButton);
+
+        this.ui.panel.append(this.ui.upButton);
+        this.ui.panel.append(this.ui.entityLabel);
+        this.ui.panel.append(this.ui.buttonsHolder);
+
+        this.ui.holder = $("<div/>");
+        this.ui.holder.attr("id", "editor-component-accordions");
+        this.ui.holder.css({
+            "position"   : "relative",
+            "overflow"   : "auto",
+            "top"        : 15,
+            "left"       : 10,
+            "width"      : "95%",
+            "height"     : this.componentHolderHeight(),
+            "font-size"  : "10px",
+            "padding"    : 0
+        });
+
+        this.ui.panel.append(this.ui.holder);
+
+        this.ui.upButton.hide();
+        this.ui.buttonsHolder.hide();
+        this.ui.panel.hide();
+
+        IEditor.Instance.addWidget(this.ui.panel, "right");
+
+        this.ui.upButton.click(this, this.onUpButtonClicked);
+        this.ui.addCompButton.click(this, this.onAddComponentClicked);
+        this.ui.editCompButton.click(this, this.onEditButtonClicked);
+        this.ui.expColButton.click(this, this.onECExpColClicked);
+    },
+
+    enable : function()
+    {
+
+    },
+
+    disable : function()
+    {
+
+    },
+
+    componentHolderHeight : function()
+    {
+        return this.ui.panel.height() - (
+            this.ui.entityLabel.height()
+            + this.ui.buttonsHolder.height()
+            + parseInt(this.ui.upButton.css("top"))
+            + parseInt(this.ui.entityLabel.css("top"))
+            + parseInt(this.ui.buttonsHolder.css("top"))
+            + parseInt(this.ui.entityLabel.css("margin-bottom"))
+            + parseInt(this.ui.entityLabel.css("padding-top"))
+            + parseInt(this.ui.entityLabel.css("padding-bottom")));
     },
 
     onUpButtonClicked : function()
@@ -953,8 +1672,8 @@ var IEditor = IWrapper.$extend(
         var registeredComponents = IEditor.scene.registeredComponents();
         for (var i = 0; i < registeredComponents.length; i++)
             comps.push({
-                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].typeName),
-                value : registeredComponents[i].typeId
+                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
+                value : registeredComponents[i].TypeId
             });
 
         var dialog = new ModalDialog("AddComponent", "Add new component", 450, 300);
@@ -997,29 +1716,6 @@ var IEditor = IWrapper.$extend(
 
         dialog.addButtons(buttons);
         dialog.exec();
-    },
-
-    onEntityCreated : function(entityPtr)
-    {
-        var rootNode = null;
-        var parent = entityPtr.parentId();
-        if (isNull(parent))
-            rootNode = this.ui.sceneTree.holder.fancytree("getRootNode");
-        else
-            rootNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + parent);
-
-        this.createTreeItemForEntity(entityPtr, rootNode);
-    },
-
-    onEntityRemoved : function(entityPtr)
-    {
-        if (isNotNull(this.currentObject))
-        {
-            if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
-                this.selectEntity(null);
-        }
-
-        this.removeTreeItem(entityPtr);
     },
 
     onEditButtonClicked : function()
@@ -1090,412 +1786,59 @@ var IEditor = IWrapper.$extend(
             $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
     },
 
-    toggleEditor : function()
-    {
-        this.enabled = !this.enabled;
-        this.setEnabled(this.enabled);
-    },
-
-    setEnabled : function(enabled)
-    {
-        if (enabled)
-        {
-            this.switchPanels(false);
-            this.populateScene();
-            this.toolkit.show();
-            this._onResizeEvent();
-        }
-        else
-        {
-            IEditor.scene.unregisterAll();
-
-            for (var i = 0; i < this.sceneEvents.length; i++)
-                IEditor.scene.unsubscribe(this.sceneEvents[i]);
-            this.sceneEvents.length = 0;
-
-            this.ui.sceneTree.holder.fancytree("destroy");
-            this.ui.sceneTree.holder.empty();
-            this.ui.sceneTree.panel.hide();
-
-            this.selectEntity(null);
-            this.ui.ecEditor.panel.hide();
-
-            this.toolkit.hide();
-
-            this.undoStack.clear();
-        }
-
-        if (isNull(this.transformEditor))
-            this.initTransformEditor();
-    },
-
-    togglePanels : function()
-    {
-        if (this.isEditorEnabled())
-            this.switchPanels(!this.isECEditor);
-    },
-
-    switchPanels : function(ecPanel)
-    {
-        if (ecPanel)
-        {
-            this.ui.ecEditor.panel.show();
-            this.ui.sceneTree.panel.hide();
-        }
-        else
-        {
-            this.ui.ecEditor.panel.hide();
-            this.ui.sceneTree.panel.show();
-        }
-
-        this.isECEditor = ecPanel;
-        this._onResizeEvent();
-        this.toolkit.onPanelsSwitch(this.isECEditor);
-    },
-
-    selectEntity : function(entityPtr, activeComponent)
+    onEntitySelected : function(entityPtr, activeComponent)
     {
         if (isNotNull(this.currentObject))
             this.saveAccordionHistory();
 
-        this.ui.ecEditor.holder.off();
-        this.ui.ecEditor.holder.empty();
-        this.ui.ecEditor.upButton.data("targetEntity", -1);
-        this.ui.ecEditor.addCompButton.data("targetEntity", -1);
+        this.ui.holder.off();
+        this.ui.holder.empty();
+        this.ui.upButton.data("targetEntity", -1);
+        this.ui.addCompButton.data("targetEntity", -1);
 
         if (isNull(entityPtr))
         {
             this.currentObject = null;
-            this.ui.ecEditor.entityLabel.html(this.noSelectionStr);
+            this.ui.entityLabel.html(this.noSelectionStr);
 
-            this.ui.ecEditor.upButton.hide();
-            this.ui.ecEditor.buttonsHolder.hide();
-
-            if (isNotNull(this.transformEditor))
-                this.transformEditor.clearSelection();
+            this.ui.upButton.hide();
+            this.ui.buttonsHolder.hide();
         }
-        else
+        else if (isNotNull(entityPtr))
         {
-            this.switchPanels(true);
-            if (isNotNull(this.transformEditor))
-                this.transformEditor.setTargetEntity(entityPtr);
-
             this.currentObject = entityPtr;
-            this.ui.ecEditor.upButton.data("targetEntity", entityPtr.id);
-            this.ui.ecEditor.addCompButton.data("targetEntity", entityPtr.id);
+            this.ui.upButton.data("targetEntity", entityPtr.id);
+            this.ui.addCompButton.data("targetEntity", entityPtr.id);
             this.populateComponents(entityPtr, activeComponent);
 
-            this.ui.ecEditor.buttonsHolder.show();
+            this.ui.buttonsHolder.show();
             if (isNotNull(entityPtr.parentId()))
-                this.ui.ecEditor.upButton.show();
+                this.ui.upButton.show();
             else
-                this.ui.ecEditor.upButton.hide();
+                this.ui.upButton.hide();
         }
-
-        this.toolkit.onEntitySelected(entityPtr);
     },
 
-    setTransformMode : function(mode)
-    {
-        if (this.transformEditor)
-            this.transformEditor.setMode(mode);
-    },
-
-    removeCurrent : function()
+    onMultiSelect : function()
     {
         if (isNotNull(this.currentObject))
-            this.removeEntityCommand(this.currentObject);
-    },
+            this.saveAccordionHistory();
 
-    createContextMenu : function()
-    {
-        var menuItemHoverInCss = {
-            "background-color" : "rgb(150,150,150)",
-            "color" : "rgb(255,255,255)"
-        };
-        var menuItemHoverOutCss = {
-            "background-color" : "#F2F2F2",
-            "color"   : "#333333"
-        };
+        this.ui.holder.off();
+        this.ui.holder.empty();
+        this.ui.upButton.data("targetEntity", -1);
+        this.ui.addCompButton.data("targetEntity", -1);
 
-        var self = this;
-        this.ui.sceneTree.holder.contextMenu('sceneTree-contextMenu',{
-            "Edit ..." :{
-                click : function(element){
-                    var node = $.ui.fancytree.getNode(element);
-                    var target = node.key.split("-");
+        this.currentObject = null;
+        this.ui.entityLabel.html(this.multiSelectionStr);
 
-                    var entityId = -1;
-                    var componentId = -1;
-                    if (target.length >= 2)
-                        entityId = parseInt(target[1]);
-                    if (target.length >= 3)
-                        componentId = parseInt(target[2]);
-
-                    var entity = IEditor.scene.entityById(entityId);
-                    if (isNotNull(entity))
-                        self.selectEntity(entity, componentId);
-                },
-                klass : "sceneTree-contextMenu-itemsClass"
-            },
-            "Delete" : {
-                click : function(element){
-                    var node = $.ui.fancytree.getNode(element);
-                    var target = node.key.split("-");
-                    var entityId = -1;
-                    var componentId = -1;
-                    if (target.length >= 2)
-                        entityId = parseInt(target[1]);
-                    if (target.length >= 3)
-                        componentId = parseInt(target[2]);
-
-                    var entStr = IEditor.scene.entityString;
-                    var compStr = IEditor.scene.componentString;
-                    var entity = IEditor.scene.entityById(entityId);
-                    if (isNull(entity))
-                        return;
-                    else
-                    {
-                        if (componentId !== -1)
-                        {
-                            var componentPtr = entity.componentById(componentId);
-                            var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveComponent", 
-                                "Remove " + compStr, 
-                                "Are you sure that you want to remove this " + compStr + "?",
-                                function(){
-                                    IEditor.Instance.removeComponentCommand(componentPtr);
-                                });
-
-                            confirmDialog.exec();
-                        }
-                        else
-                        {
-                            var confirmDialog = ModalDialog.confirmationDialog(
-                                "RemoveEntity", 
-                                "Remove " + entStr + " with ID " + entityId, 
-                                "Are you sure that you want to remove this " + entStr + "?",
-                                function(){
-                                    IEditor.Instance.removeEntityCommand(entity);                                    
-                                });
-
-                            confirmDialog.exec();
-                        }
-                    }
-                },
-                klass : "sceneTree-contextMenu-itemsClass"
-            }
-        }, 
-        {
-            delegateEventTo: 'span.fancytree-title',
-            disable_native_context_menu : true
-        });
-
-        var contextMenu = $("#sceneTree-contextMenu");
-        contextMenu.css({
-            "background-color": "#F2F2F2",
-            "border": "1px solid #999999",
-            "list-style-type": "none",
-            "margin": 10,
-            "padding": 5
-        });
-    },
-
-    populateScene : function()
-    {
-        var entities = IEditor.scene.entities();
-
-        var sceneRootElem = $("<ul/>",{
-            id : "sceneTree-rootElement"
-        });
-        sceneRootElem.css("text-align", "left");
-
-        this.ui.sceneTree.holder.append(sceneRootElem);
-        this.ui.sceneTree.holder.fancytree({
-            icons : false
-        });
-
-        var rootNode = this.ui.sceneTree.holder.fancytree("getRootNode");
-        for (var i = 0; i < entities.length; i++)
-        {
-            var entity = entities[i];
-            this.createTreeItemForEntity(entity, rootNode);
-        };
-
-        this.sceneEvents.push(IEditor.scene.entityCreated(this, this.onEntityCreated));
-        this.sceneEvents.push(IEditor.scene.entityRemoved(this, this.onEntityRemoved));
-        this.sceneEvents.push(IEditor.scene.componentCreated(this, this.onComponentCreated));
-        this.sceneEvents.push(IEditor.scene.componentRemoved(this, this.onComponentRemoved));
-        this.sceneEvents.push(IEditor.scene.attributeChanged(this, this.onAllAttributeChanges));
-    },
-
-    saveAccordionHistory : function()
-    {
-        var previousHistory = this.accordionHistory[this.currentObject.id];
-        if (isNotNull(previousHistory))
-            previousHistory.length = 0;
-
-        var history = this.accordionHistory[this.currentObject.id];
-        history = [];
-
-        var atLeastOneActive = false;
-        var accordions = $("div[id^='accordion-']");
-        for (var i = 0; i < accordions.length; i++)
-        {
-            var targetCompId = $(accordions[i]).data("targetComponent");
-            var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
-            if (isActive)
-                history.push($(accordions[i]).data("targetComponent"));
-        }
-
-        if (history.length !== 0)
-            this.accordionHistory[this.currentObject.id] = history;
-    },
-
-    getAccordionHistory : function(entityId)
-    {
-        return (isNull(this.accordionHistory[entityId]) ? [] : this.accordionHistory[entityId]);
-    },
-
-    createTreeItemForEntity : function(entityPtr, parentNode)
-    {
-        var childNode = parentNode.addChildren({
-            title : this.getNodeTitleForEntity(entityPtr),
-            key : "sceneNode-" + entityPtr.id
-        });
-
-        var components = entityPtr.components();
-        for (var i = 0; i < components.length; i++)
-            this.createTreeItemForComponent(components[i], childNode);
-    },
-
-    createTreeItemForComponent : function(componentPtr, parentNode)
-    {
-        var fullName = this.getNodeTitleForComponent(componentPtr);
-        var childNode = parentNode.addChildren({
-            title : fullName,
-            key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
-        });
-    },
-
-    removeTreeItem : function(entityPtr, componentPtr)
-    {
-        var node = null;
-        if (isNull(componentPtr))
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        else
-            node = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id + "-" + componentPtr.id);
-
-        if (isNotNull(node))
-            node.remove();
-    },
-
-    getNodeTitleForEntity : function(entityPtr, setUnnamed)
-    {
-        if (isNull(setUnnamed))
-            setUnnamed = false;
-
-        var type = entityPtr.typeName;
-        if (isNull(type))
-            type = "";
-
-        var entityName = "<i>unnamed " + type + "</i>";
-        var name = entityPtr.getName();
-        if (name !== "" && !setUnnamed)
-            entityName = name;
-
-        return ("(" + entityPtr.id + ") " + entityName);
-    },
-
-    getNodeTitleForComponent : function(componentPtr)
-    {
-        var componentName = (componentPtr.name.length > 0 ? " (" + componentPtr.name + ")" : "");
-        var componentTypeName = IEditor.scene.componentNameInHumanFormat(componentPtr.typeName);
-
-        return (componentTypeName + componentName);
-    },
-
-    getNodeTitleForElement : function(elementPtr)
-    {
-        var elementName = (elementPtr.getName().length > 0 ? " (" + elementPtr.getName() + ")" : "");
-        var elementType = IEditor.scene.componentNameInHumanFormat(elementPtr.typeName);
-
-        return ("[" + elementPtr.id + "] " + elementType + elementName);
-    },
-
-    renameEntityNode : function(entityPtr, setUnnamed)
-    {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        if (isNull(treeItem))
-            return;
-
-        treeItem.setTitle(this.getNodeTitleForEntity(entityPtr, setUnnamed));
-    },
-
-    renameComponentNode : function(componentPtr)
-    {
-        var treeItem = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id);
-        if (isNull(treeItem))
-            return;
-
-        treeItem.setTitle(this.getNodeTitleForComponent(componentPtr));
-    },
-
-    onComponentCreated : function(entityPtr, componentPtr)
-    {
-        if (!this.isEditorEnabled())
-            return;
-
-        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-            this.appendAccordionForComponent(componentPtr);
-
-        var treeNode = this.ui.sceneTree.holder.fancytree("getNodeByKey", "sceneNode-" + entityPtr.id);
-        this.createTreeItemForComponent(componentPtr, treeNode);
-    },
-
-    onComponentRemoved : function(entityPtr, componentPtr)
-    {
-        if (!this.isEditorEnabled())
-            return;
-
-        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
-            if (componentPtr.typeName === "EC_Name")
-                this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr, true));
-
-        var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
-        $(accordionId).hide("fast", function()
-        {
-            $(accordionId).remove();
-        });
-
-        if (componentPtr.typeName === "EC_Name")
-            this.renameEntityNode(entityPtr, true);
-
-        this.removeTreeItem(entityPtr, componentPtr);
-    },
-
-    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
-    {
-        if (!this.isEditorEnabled())
-            return;
-
-        if (isNotNull(this.currentObject))
-        {
-            if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
-            {
-                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-                if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-                    this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
-            }
-        }
-
-        if (componentPtr.typeName === "EC_Name" && attributeName === "name")
-            this.renameEntityNode(entityPtr);
+        this.ui.upButton.hide();
+        this.ui.buttonsHolder.hide();
     },
 
     populateComponents : function(entityPtr, activeComponent)
     {
-        this.ui.ecEditor.entityLabel.html(this.getNodeTitleForEntity(entityPtr));
+        this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr));
 
         for (var i = this.componentEvents.length - 1; i >= 0; i--)
             IEditor.scene.unsubscribe(this.componentEvents[i]);
@@ -1517,19 +1860,18 @@ var IEditor = IWrapper.$extend(
         var allowedComps = IEditor.scene.registeredComponents(entityPtr.typeName);
         if (allowedComps.length === 0)
         {
-            this.ui.ecEditor.editCompButton.button("disable");
-            this.ui.ecEditor.addCompButton.button("disable");
+            this.ui.editCompButton.button("disable");
+            this.ui.addCompButton.button("disable");
         }
         else
         {
-            this.ui.ecEditor.editCompButton.button("enable");
-            this.ui.ecEditor.addCompButton.button("enable");
+            this.ui.editCompButton.button("enable");
+            this.ui.addCompButton.button("enable");
         }
 
-        this.ui.ecEditor.holder.on("change", "input", this.onAttributesEdit);
-        this.ui.ecEditor.holder.on("change", "select", this.onAttributesEdit);
-
-        // this.ui.ecEditor.holder.sortable();
+        this.ui.holder.on("change", "input", this.onAttributesEdit);
+        this.ui.holder.on("keydown", "input", function(e) { e.stopPropagation(); });
+        this.ui.holder.on("change", "select", this.onAttributesEdit);
     },
 
     appendAccordionForComponent : function(componentPtr, setActive, canBeRemoved)
@@ -1540,8 +1882,8 @@ var IEditor = IWrapper.$extend(
             setActive = false;
         if (isNull(canBeRemoved))
             canBeRemoved = true;
-
         var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
+
         var accordionId = "accordion-" + entAndCompSuffix;
         var accordion = $("<div/>", {
             id : accordionId
@@ -1597,7 +1939,7 @@ var IEditor = IWrapper.$extend(
             });
         }
 
-        var editButtonsVisible = this.ui.ecEditor.editCompButton.data("toggle");
+        var editButtonsVisible = this.ui.editCompButton.data("toggle");
         if (!editButtonsVisible)
         {
             addAttrButton.hide();
@@ -1659,7 +2001,7 @@ var IEditor = IWrapper.$extend(
 
         accordion.append(contentHolder);
 
-        this.ui.ecEditor.holder.append(accordion);
+        this.ui.holder.append(accordion);
         accordion.accordion({
             header : "> div > .h3",
             collapsible : true,
@@ -1749,7 +2091,7 @@ var IEditor = IWrapper.$extend(
                     var componentPtr = entityPtr.componentById(componentId);
                     var compStr = IEditor.scene.componentString;
                     var confirmDialog = ModalDialog.confirmationDialog(
-                        "RemoveComponent", 
+                        "RemoveComponent",
                         "Remove " + compStr,
                         "Are you sure that you want to remove this " + compStr + "?",
                         function()
@@ -1759,7 +2101,7 @@ var IEditor = IWrapper.$extend(
                     );
 
                     confirmDialog.exec();
-                    
+
                 }
             }
         });
@@ -1810,7 +2152,7 @@ var IEditor = IWrapper.$extend(
             text : false
         });
 
-        var editButtonsVisible = this.ui.ecEditor.editCompButton.data("toggle");
+        var editButtonsVisible = this.ui.editCompButton.data("toggle");
         if (!editButtonsVisible)
             removeAttrButton.hide();
 
@@ -1830,7 +2172,7 @@ var IEditor = IWrapper.$extend(
             confirmDialog.exec();
         })
 
-        var attrNameColumn = $("<td/>").css(Utils.attributeTableColumnStyle);
+        var attrNameColumn = $("<td/>", {id : "label-" + idOfElements}).css(Utils.attributeTableColumnStyle);
         if (!isDynamic)
             attrNameColumn.attr("colspan", 2);
 
@@ -2033,6 +2375,73 @@ var IEditor = IWrapper.$extend(
         return arrayRow;
     },
 
+    onEntityRemoved : function(entityPtr)
+    {
+        if (isNotNull(this.currentObject))
+        {
+            if (entityPtr.id === this.currentObject.id || entityPtr.isAncestorOf(this.currentObject))
+                this.onEntitySelected(null);
+        }
+    },
+
+    onComponentCreated : function(entityPtr, componentPtr)
+    {
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            this.appendAccordionForComponent(componentPtr);
+    },
+
+    onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        if (isNotNull(this.currentObject) && (entityPtr.id === this.currentObject.id))
+            if (componentPtr.typeName === "Name")
+                this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr, true));
+
+        var accordionId = "#accordion-" + entityPtr.id + "-" + componentPtr.id;
+        $(accordionId).hide("fast", function()
+        {
+            $(accordionId).remove();
+        });
+    },
+
+    onAttributeCreate : function(componentPtr, attributePtr)
+    {
+        var suffix = componentPtr.parentId() + "-" + componentPtr.id;
+        var targetAccordion = $("#accordion-" + suffix);
+
+        var targetTable = $("#table-" + suffix);
+        var tableBody = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributePtr.name, attributePtr);
+        tableBody.appendTo(targetTable);
+
+        targetAccordion.accordion("refresh");
+    },
+
+    onAttributeRemove : function(componentPtr, attributeIndex, attributeName)
+    {
+        var suffixAccordion = componentPtr.parentId() + "-" + componentPtr.id;
+        var suffix = suffixAccordion + "-" + attributeName;
+        var targetBody = $("#tableBody-" + suffix);
+        targetBody.hide("fast", function()
+            {
+                targetBody.remove();
+                var accordionId = "#accordion-" + suffixAccordion;
+                $(accordionId).accordion("refresh");
+            }
+        );
+    },
+
+    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        if (isNotNull(this.currentObject))
+        {
+            if (entityPtr.id === this.currentObject.id || componentPtr.id === this.currentObject.id)
+            {
+                this.onAttributesChanged(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+                if (componentPtr.typeName === "Name" && attributeName === "name")
+                    this.ui.entityLabel.html(IEditor.Instance.getNodeTitleForEntity(entityPtr));
+            }
+        }
+    },
+
     onAttributesEdit : function()
     {
         var data = $(this).data("attrData");
@@ -2113,35 +2522,9 @@ var IEditor = IWrapper.$extend(
         IEditor.Instance.changeAttributeCommand(attribute, finalValue);
     },
 
-    onAttributeCreate : function(componentPtr, attributePtr)
-    {
-        var suffix = componentPtr.parentId() + "-" + componentPtr.id;
-        var targetAccordion = $("#accordion-" + suffix);
-
-        var targetTable = $("#table-" + suffix);
-        var tableBody = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributePtr.name, attributePtr);
-        tableBody.appendTo(targetTable);
-
-        targetAccordion.accordion("refresh");
-    },
-
-    onAttributeRemove : function(componentPtr, attributeIndex, attributeName)
-    {
-        var suffixAccordion = componentPtr.parentId() + "-" + componentPtr.id;
-        var suffix = suffixAccordion + "-" + attributeName;
-        var targetBody = $("#tableBody-" + suffix);
-        targetBody.hide("fast", function()
-            {
-                targetBody.remove();
-                var accordionId = "#accordion-" + suffixAccordion;
-                $(accordionId).accordion("refresh");
-            }
-        );
-    },
-
     onAttributesChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
     {
-        if (!this.isEditorEnabled())
+        if (!IEditor.Instance.isEditorEnabled())
             return;
 
         var attributePtr = component.attributeByName(attributeName);
@@ -2165,7 +2548,7 @@ var IEditor = IWrapper.$extend(
         }
         else if (IEditor.scene.isAttributeTransform(typeId))
         {
-            // WebRocket specific 'Transform' attribute
+            // WebTundra specific 'Transform' attribute
             var xyz = ["x", "y", "z"];
             for (var i = 0; i < 9; i++)
             {
@@ -2255,23 +2638,929 @@ var IEditor = IWrapper.$extend(
 
             arrayTableBody.data("arrayLength", arrayLength);
         }
+    },
+
+    saveAccordionHistory : function()
+    {
+        var previousHistory = this.accordionHistory[this.currentObject.id];
+        if (isNotNull(previousHistory))
+            previousHistory.length = 0;
+
+        var history = this.accordionHistory[this.currentObject.id];
+        history = [];
+
+        var atLeastOneActive = false;
+        var accordions = $("div[id^='accordion-']");
+        for (var i = 0; i < accordions.length; i++)
+        {
+            var targetCompId = $(accordions[i]).data("targetComponent");
+            var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
+            if (isActive)
+                history.push($(accordions[i]).data("targetComponent"));
+        }
+
+        if (history.length !== 0)
+            this.accordionHistory[this.currentObject.id] = history;
+    },
+
+    getAccordionHistory : function(entityId)
+    {
+        return (isNull(this.accordionHistory[entityId]) ? [] : this.accordionHistory[entityId]);
+    },
+
+    onWindowResize : function(width, height)
+    {
+        this.$super(width, height);
+        this.ui.holder.css("height", this.componentHolderHeight());
+    }
+});
+
+var IEditor = IWrapper.$extend(
+/** @lends IEditor.prototype */
+{
+    __classvars__ :
+    {
+        /** An instance to the SceneWrapper-derived object
+            @static
+            @type {SceneWrapper}
+            @default null
+        */
+        scene : null,
+        Instance : null
+    },
+
+    /**
+        Main entry point to the Interface Designer application.
+        Implements all necessary communication with the underlying system to display the current scene situation.<br>
+        In order to start the interface designer, an instance should be made of the implementation of this class. Make sure that all dependencies that your implementation and the interface designer uses are included before making the instance.<br>
+        Any custom option of your needs can be added to the `options` object, and subsequently handled in your own implementation.<br>
+        Be sure to call the base implementation of the editor in your derived class constructor, as shown in the example.
+        @example
+        * var MyEditor = IEditor.$extend({
+        * {
+        *     __init__ : function(options)
+        *     {
+        *         // call the base implementation constructor
+        *         this.$super(options);
+        *         // your code here
+        *     },
+        *     // ... derived methods etc.
+        * });
+
+        @constructs
+        @param {object} [options] Start-up options
+        @param {string} [options.type=""] Type name of the underlying system of your choice.
+        @param {string} [options.toggleEditorShortcut="shift+s"] The shortcut to enable the editor
+        @param {string} [options.switchPanelsShortcut="shift+e"] The shortcut to switch between scene tree and entity-component editor
+        @param {string} [options.noSelectionString="(No entities selected)"] The text shown in the EC editor title when no entities are selected
+        @extends IWrapper
+    */
+    __init__ : function(options)
+    {
+        this.$super();
+
+        /**
+            An instance to the IEditor-derived object. Use with caution.
+            @static
+            @type {SceneWrapper}
+            @default null
+        */
+        IEditor.Instance = this;
+
+        /**
+            Type of the underlying system as string
+            @type {string}
+            @default ""
+        */
+        this.type = options.type || "";
+
+        this.ui = {};
+        this.panels = {};
+        this.enabled = false;
+        this.isECEditor = false;
+        this.sceneEvents = [];
+
+        /**
+            Transform editor instance
+            @type TransformEditor
+        */
+        this.transformEditor = null;
+
+        this.toggleEditorShortcut = options.toggleEditorShortcut || "shift+s";
+        this.switchPanelsShortcut = options.switchPanelsShortcut || "shift+e";
+
+        // The current object in editing
+        this.currentObject = null;
+
+        this.initTransformEditor();
+
+        this.fontConfig = $.extend({}, this.defaultFontConfig());
+        this.fontConfigMonospaceConfig = $.extend({
+            "font-family" : '"Courier New", monospace',
+            "font-size"   : "13px",
+        }, this.defaultMonospaceFontConfig());
+
+        /**
+            Undo manager instance
+            @type UndoRedoManager
+        */
+        this.undoStack = new UndoRedoManager();
+        /**
+            Toolkit manager instance
+            @type ToolkitManager
+        */
+        this.toolkit = new ToolkitManager(this.fontConfig);
+
+        this._initUi();
+        this.toolkit.initUi(isNotNull(this.transformEditor));
+
+        if (this.isConnected())
+            this._onClientConnected();
+        else
+            this.registerClientConnectedCallback(this, this._onClientConnected);
+    },
+
+    _onClientConnected : function()
+    {
+        this.registerKeyEventCallback(this, this._onKeyEvent);
+        this.registerMouseEventCallback(this, this._onMouseEvent);
+        IEditor.scene = this.registerSceneObject();
+
+        this.registerPanel(new SceneTreePanel({
+            width: this.panelWidth,
+            height: this.panelHeight,
+            fontConfig: this.fontConfig
+        }));
+
+        this.registerPanel(new ECEditorPanel({
+            width: this.panelWidth,
+            height: this.panelHeight,
+            fontConfig: this.fontConfig
+        }));
+
+        this.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
+        this.registerResizeEventCallback(this, this._onResizeEvent);
+    },
+
+    /**
+        Provides default font config object.
+        @return {Object}
+        @virtual
+    */
+    defaultFontConfig : function()
+    {
+        return {};
+    },
+
+    /**
+        Provides default font config object.
+        @return {Object}
+        @virtual
+    */
+    defaultMonospaceFontConfig : function()
+    {
+        return {};
+    },
+
+    /**
+        Returns if the editor is enabled
+        @return {boolean} - true if enabled
+    */
+    isEditorEnabled : function()
+    {
+        return this.enabled;
+    },
+
+    /**
+        Returns if there is a connection to a server
+        @return {boolean} - true if connected
+        @virtual
+    */
+    isConnected : function()
+    {
+        return true;
+    },
+
+    /**
+        Returns the available screen width from browser
+        @return {number}
+        @virtual
+    */
+    width : function()
+    {
+        return -1;
+    },
+
+    /**
+        Returns the available screen height from browser
+        @return {number}
+        @virtual
+    */
+    height : function()
+    {
+        return -1;
+    },
+
+    /**
+        Returns if there is a taskbar in the underlying system, serves to calculate the editor panels height
+        @return {jQuery} - The element as jQuery, or null if does not exist
+        @virtual
+    */
+    taskbar : function()
+    {
+        return null;
+    },
+
+    /**
+        Returns a container element if such is implemented in the underlying system
+        @virtual
+        @return {jQuery} - The container element
+    */
+    container : function() {},
+
+    /**
+        Adds a widget / 2D UI to the browser, or container if such is implemented.
+        @virtual
+        @param {jQuery} element A jQuery element
+    */
+    addWidget : function(element) {},
+
+    /**
+        Registers a {@link SceneWrapper}-derived object that will serve as the basis for scene manipulation through this editor.<br>
+        The implementations of this method should make an instance of their own {@link SceneWrapper} derived object, and return it.
+
+        @virtual
+        @return {SceneWrapper}
+    */
+    registerSceneObject : function() {},
+
+    /**
+        Registers a callback for an event that is fired when the client is connected to a server (synchronization)
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
+    registerClientConnectedCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a key event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
+    registerKeyEventCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a mouse event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
+    registerMouseEventCallback : function(context, callback) {},
+
+    /**
+        Registers a callback for a resize event.
+        @param {Object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the event is fired
+        @virtual
+    */
+    registerResizeEventCallback : function(context, callback) {},
+
+    /**
+        Adds an "entity create" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding an entity to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string[]} components An array of component type names
+        @param {string} [entityName] Name for the new entity
+        @virtual
+    */
+    addEntityCommand : function(components, entityName) {},
+
+    /**
+        Adds an "entity remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing an entity from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {EntityWrapper} entityPtr The entity to be removed
+        @virtual
+    */
+    removeEntityCommand : function(entityPtr) {},
+
+    /**
+        Adds a "component create" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {number} entityId The entity ID that this component should be created
+        @param {string} compType Component type name
+        @param {string} compName Component name
+        @param {boolean} isLocal Create local component
+        @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */
+    addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
+
+    /**
+        Adds a "component remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing a component from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {ComponentWrapper} componentPtr The entity to be removed
+        @virtual
+    */
+    removeComponentCommand : function(componentPtr) {},
+
+    /**
+        Adds an "attribute add" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {number} entityId The entity ID that this component should be created
+        @param {string} compType Component type name
+        @param {string} compName Component name
+        @param {boolean} isLocal Create local component
+        @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */
+    addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
+
+    /**
+        Adds an "attribute remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for removing an attribute from the component, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {AttributeWrapper} attributePtr The attribute to be removed
+        @virtual
+    */
+    removeAttributeCommand : function(attributePtr) {},
+
+    /**
+        Adds an "attribute change" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for changing the attribute's value, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {AttributeWrapper} attributePtr The attribute to be changed
+        @param {*} value The new value to be set
+        @virtual
+    */
+    changeAttributeCommand : function(attributePtr, value) {},
+
+    /**
+        Saves the scene.<br>
+        Implementations should handle the saving of the scene according to the underlying system for serialization of the scene description
+        @param {string} filename The desired filename without extension
+        @virtual
+    */
+    save : function(filename) {},
+
+    /**
+        Loads a scene file from hard drive.<br>
+        Implementations should handle the saving of the scene according to the underlying system for deserialization of the scene description
+        @virtual
+        @param {File} fileObject Instance of File object
+    */
+    load : function(fileObject) {},
+    /**
+        Initializes the transform editor. Serves to manipulate position / rotation / scale of 3D objects.<br>
+        Implementations should make their own transform editors by extending {@link ITransformEditor} and all of its methods
+        @param {string} filename The desired filename without extension
+        @virtual
+    */
+    initTransformEditor : function() {},
+
+    /**
+        Adds a "create primitive" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating the primitive, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string} type Type of primitive: "Ball", "Cube", "Cone", "Cyllinder"
+        @virtual
+    */
+    createPrimitive : function(type) {},
+
+    /**
+        Adds a "create movable" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a movable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
+    createMovable : function() {},
+
+    /**
+        Adds a "create drawable" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a drawable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
+    createDrawable : function() {},
+
+    /**
+        Adds a "create script" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a script, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
+    createScript : function() {},
+
+    /**
+        Shows the helper grid on the XZ plane.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
+    showGrid : function() {},
+
+    /**
+        Hides the helper grid on the XZ plane.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
+    hideGrid : function() {},
+
+    /**
+        Shows the helper axes, with start at the 0,0,0 position.<br>
+        Implementations of this method should handle the creation of the axes in the underlying system renderer
+    */
+    showAxes : function() {},
+
+    /**
+        Hides the helper axes.<br>
+        Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
+    */
+    hideAxes : function() {},
+
+    /**
+        Quickly creates an entity with given type. Adds a command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a movable, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {string} type Type of entity: "Drawable", "Movable", "Script"
+        @virtual
+    */
+    quickCreateEntity : function(type)
+    {
+        if (isNull(type))
+            return;
+
+        if (type === "Drawable")
+            this.createDrawable();
+        else if (type === "Movable")
+            this.createMovable();
+        else if (type === "Script")
+            this.createScript();
+        else
+            this.logError("quickCreate: Unknown type: " + text);
+    },
+
+    _initUi : function()
+    {
+        // Invalid data CSS class, for marking up invalid values on input boxes
+        var invalidDataClass = $("<style/>");
+        invalidDataClass.text(".invalidData { border : 2px solid red; }");
+
+        var undoListStyle = "#_toolkit-undoStackButtons .ui-selecting { background: #AAAAAA; } \
+        #_toolkit-undoStackButtons .ui-selected { background: #BBBBBB; color: white; } \
+        #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
+        #_toolkit-undoStackButtons li { margin: 3px; padding: 0.4em; font-size: 1.4em; height: 18px; } ";
+
+        var monoSpaceFlat = "";
+        for (var prop in this.fontConfigMonospaceConfig)
+            monoSpaceFlat += prop + ": " + this.fontConfigMonospaceConfig[prop] + ";"
+
+        var treeStyle= ".fancytree-node { " + monoSpaceFlat + "}" +
+                       ".fancytree-focused { font-weight: bold; }";
+
+        var undoStyleElem = $("<style/>");
+        undoStyleElem.append(undoListStyle);
+
+        $("head").append(invalidDataClass);
+        $("head").append(undoStyleElem);
+        $("head").append($("<style/>").append(treeStyle));
+
+        this.panelWidth = 420;
+        this.panelHeight = this.height();
+
+        var toolbar = this.toolkit.getOrCreateToolbar(this.width() - this.panelWidth);
+
+        toolbar.hide();
+
+        this.addWidget(toolbar, "top");
+    },
+
+    registerPanel : function(panel)
+    {
+        this.panels[panel.name] = panel;
+        panel.initUi();
+
+        this.toolkit.appendPanelButton(panel.name, panel.label);
+    },
+
+    onEntityCreated : function(entityPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntityCreated === "function")
+                panel.onEntityCreated(entityPtr);
+        }
+    },
+
+    onEntityRemoved : function(entityPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntityRemoved === "function")
+                panel.onEntityRemoved(entityPtr);
+        }
+    },
+
+    _onKeyEvent : function(keyEvent)
+    {
+        if (keyEvent.type !== "press" && keyEvent.type !== "keydown")
+            return;
+
+        var editorShortcutKeys = this.toggleEditorShortcut.replace(/ /g,'').split("+");
+        var panelsShortcutKeys = this.switchPanelsShortcut.replace(/ /g,'').split("+");
+
+        var editorShortcutPressed = true;
+        for (var i = 0; i < editorShortcutKeys.length; ++i)
+        {
+            if (!keyEvent.isPressed(editorShortcutKeys[i]))
+            {
+                editorShortcutPressed = false;
+                break;
+            }
+        }
+
+        var panelsShortcutPressed = true;
+        for (var i = 0; i < panelsShortcutKeys.length; ++i)
+        {
+            if (!keyEvent.isPressed(panelsShortcutKeys[i]))
+            {
+                panelsShortcutPressed = false;
+                break;
+            }
+        }
+
+        if (editorShortcutPressed)
+        {
+            this.toggleEditor();
+            // @todo Make the wrapper impl prevent/stop propagation
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true; // @todo Remove when above done
+        }
+        else if (panelsShortcutPressed)
+        {
+            this.togglePanels();
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true;
+        }
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("z"))
+            this.undoStack.undo();
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("q"))
+            this.undoStack.redo();
+    },
+
+    _onMouseEvent : function(mouseEvent)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        if (mouseEvent.targetNodeName !== "canvas" && mouseEvent.targetNodeName !== "xml3d")
+            return;
+
+        if (mouseEvent.type === "press" && mouseEvent.leftDown)
+        {
+            var raycastResult = IEditor.scene.doRaycast(mouseEvent.x, mouseEvent.y);
+            if (isNotNull(raycastResult))
+            {
+                if (isNull(raycastResult.entity) && isNull(this.currentObject))
+                    return;
+
+                if (isNotNull(raycastResult.entity) && isNotNull(this.currentObject))
+                    if (raycastResult.entity.id == this.currentObject.id)
+                        return;
+
+                if (mouseEvent.shiftPressed === true)
+                {
+                    this.appendEntity(raycastResult.entity);
+                }
+                else
+                    this.selectEntity(raycastResult.entity);
+                mouseEvent.suppressed = true;
+            }
+            else
+            {
+                if (isNotNull(this.transformEditor))
+                {
+                    this.transformEditor.clearSelection();
+                    mouseEvent.suppressed = true;
+                }
+            }
+        }
+    },
+
+    _onResizeEvent : function(width, height)
+    {
+        var panelHeight = this.height();
+        var taskbar = this.taskbar();
+        var container = $("body");
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onWindowResize === "function")
+                panel.onWindowResize(width, panelHeight);
+        }
+    },
+
+    onUndoRedoStateChanged : function(undoItems, redoItems, total)
+    {
+        this.toolkit.onUndoRedoStateChanged(undoItems, redoItems, total);
+    },
+
+    setSwitchPanelsShortcut : function(shortcut)
+    {
+        this.switchPanelsShortcut = shortcut;
+    },
+
+    setToggleEditorShortcut : function(shortcut)
+    {
+        this.toggleEditorShortcut = shortcut;
+    },
+
+    /**
+        Toggles the editor on or off
+    */
+    toggleEditor : function()
+    {
+        this.setEnabled(!this.enabled);
+    },
+
+    /**
+        Set the editor enabled or disabled
+        @param {boolean} enabled true to enable the editor, false to disable it
+    */
+    setEnabled : function(enabled)
+    {
+        if (this.enabled === enabled)
+            return;
+        this.enabled = enabled;
+
+        if (enabled)
+        {
+            this.sceneEvents.push(IEditor.scene.entityCreated(this, this.onEntityCreated));
+            this.sceneEvents.push(IEditor.scene.entityRemoved(this, this.onEntityRemoved));
+            this.sceneEvents.push(IEditor.scene.componentCreated(this, this.onComponentCreated));
+            this.sceneEvents.push(IEditor.scene.componentRemoved(this, this.onComponentRemoved));
+            this.sceneEvents.push(IEditor.scene.attributeChanged(this, this.onAllAttributeChanges));
+
+            this.switchPanels("scenetree");
+            this.panels["scenetree"].enable();
+            this.toolkit.show();
+            this._onResizeEvent();
+        }
+        else
+        {
+            IEditor.scene.unregisterAll();
+
+            for (var i = 0; i < this.sceneEvents.length; i++)
+                IEditor.scene.unsubscribe(this.sceneEvents[i]);
+            this.sceneEvents.length = 0;
+
+            this.panels["scenetree"].disable();
+            this.panels["eceditor"].onEntitySelected(null);
+            this.panels["eceditor"].hide();
+
+            this.toolkit.hide();
+
+            this.undoStack.clear();
+        }
+
+        if (isNull(this.transformEditor))
+            this.initTransformEditor();
+    },
+
+    /**
+        Toggles the panels
+    */
+    togglePanels : function()
+    {
+        if (this.isEditorEnabled())
+            this.switchPanels(this.isECEditor ? "scenetree" : "eceditor");
+    },
+
+    /**
+        Switch the desired panel
+        @param {string} panelName to switch to
+    */
+
+    switchPanels : function(panelName)
+    {
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            if (panelsKeys[i] != panelName)
+                this.panels[panelsKeys[i]].hide();
+        }
+        this.panels[panelName].show();
+
+        this.isECEditor = panelName == "eceditor";
+        this._onResizeEvent();
+        this.toolkit.onPanelsSwitch(panelName);
+    },
+
+    /**
+        Select an entity to be edited in the EC editor.<br>
+        If an active component is provided, then that component will be expanded
+        @param {EntityWrapper} entityPtr The entity to be edited
+        @param {number} [activeComponent] The component id to be expanded
+    */
+    selectEntity : function(entityPtr, activeComponent)
+    {
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntitySelected === "function")
+                panel.onEntitySelected(entityPtr, activeComponent);
+        }
+
+        if (isNull(entityPtr))
+        {
+            if (isNotNull(this.transformEditor))
+                this.transformEditor.clearSelection();
+            this.currentObject = null;
+        }
+        else
+        {
+            // switch to eceditor
+            this.switchPanels("eceditor");
+            if (isNotNull(this.transformEditor))
+                this.transformEditor.setTargetEntity(entityPtr);
+
+            this.currentObject = entityPtr;
+        }
+
+        this.toolkit.onEntitySelected(entityPtr);
+    },
+
+    appendEntity : function(entity)
+    {
+        if (this.transformEditor)
+            this.transformEditor.appendTarget(entity._ptr);
+        if (this.transformEditor.targets.length > 1)
+        {
+            this.panels["eceditor"].onMultiSelect();
+            this.toolkit.onMultiSelect();
+        }
+    },
+
+    /**
+        Sets the mode of the transform editor
+        @param {string} mode The transform mode, can be "translate", "rotate", "scale"
+    */
+    setTransformMode : function(mode)
+    {
+        if (this.transformEditor)
+            this.transformEditor.setMode(mode);
+    },
+
+    /**
+        Creates a "remove entity" command on the currently edited object.
+    */
+    removeCurrent : function()
+    {
+        if (isNotNull(this.currentObject))
+            this.removeEntityCommand(this.currentObject);
+    },
+
+    getNodeTitleForEntity : function(entityPtr, setUnnamed)
+    {
+        if (isNull(setUnnamed))
+            setUnnamed = false;
+
+        var type = entityPtr.typeName;
+        if (isNull(type))
+            type = "";
+
+        var entityName = "<i>unnamed " + type + "</i>";
+        var name = entityPtr.getName();
+        if (name !== "" && !setUnnamed)
+            entityName = name;
+
+        return ("(" + entityPtr.id + ") " + entityName);
+    },
+
+    getNodeTitleForComponent : function(componentPtr)
+    {
+        var componentName = (componentPtr.name.length > 0 ? " (" + componentPtr.name + ")" : "");
+        var componentTypeName = IEditor.scene.componentNameInHumanFormat(componentPtr.typeName);
+
+        return (componentTypeName + componentName);
+    },
+
+    getNodeTitleForElement : function(elementPtr)
+    {
+        var elementName = (elementPtr.getName().length > 0 ? " (" + elementPtr.getName() + ")" : "");
+        var elementType = IEditor.scene.componentNameInHumanFormat(elementPtr.typeName);
+
+        return ("[" + elementPtr.id + "] " + elementType + elementName);
+    },
+
+    onComponentCreated : function(entityPtr, componentPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onComponentCreated === "function")
+                panel.onComponentCreated(entityPtr, componentPtr);
+        }
+    },
+
+    onComponentRemoved : function(entityPtr, componentPtr)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onComponentRemoved === "function")
+                panel.onComponentRemoved(entityPtr, componentPtr);
+        }
+    },
+
+    onAllAttributeChanges : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
+    {
+        if (!this.isEditorEnabled())
+            return;
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onAllAttributeChanges === "function")
+                panel.onAllAttributeChanges(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
+        }
     }
 });
 
 var ICommand = Class.$extend(
+/** @lends ICommand.prototype */
 {
+    /**
+        Base implemetation for undo / redo commands. A command can be executed and reversed (undone), so that the state of the observing workspace will return to the state before said command was executed.<br>
+        Any changes that it does should be independent of other commands, and should be able to switch between execution and undoing multiple times in order.<br>
+        Derived implementations should extend this class and its methods for their own implementation.
+        @param {string} commandString A string that describes what the comand does in human-readable sentences
+        @constructs
+        @see {@link UndoRedoManager}
+    */
     __init__ : function(commandString)
     {
         this.commandId = -1;
         this.commandString = commandString;
     },
 
+    /**
+        Execute this command.
+    */
     exec : function() {},
+    /**
+        Undo this command.
+    */
     undo : function() {}
 });
 
 var UndoRedoManager = Class.$extend(
+/** @lends UndoRedoManager.prototype */
 {
+    /**
+        The UndoRedoManager manages the history of states on the observing workspace.<br>
+        It maintains the history stack of commands that have been executed and / or undone.
+        @param {number} numberOfItems Number of commands that the undo stack will maintain.
+        @constructs
+        @see {@link ICommand}
+        @example
+        * var IncrementCommand = ICommand.$extend({
+        *     __init__ : function(someObject)
+        *     {
+        *         this.someObject = someObject;
+        *     },
+        *
+        *     exec : function()
+        *     {
+        *         this.someObject.i +=1;
+        *     },
+        *
+        *     undo : function()
+        *     {
+        *         this.someObject.i -= 1;
+        *     },
+        * });
+        *
+        * var undoManager = new UndoRedoManager();
+        * var myObject = { i:0 };
+        * var newIncrementCommand = new IncrementCommand(myObject);
+        * undoManager.pushAndExec(newIncrementCommand); // myObject.i == 1;
+        * undoManager.undo();                           // myObject.i == 0;
+        * undoManager.redo();                           // myObject.i == 1;
+    */
     __init__ : function(numberOfItems)
     {
         this._numberOfItems = 50;
@@ -2286,15 +3575,30 @@ var UndoRedoManager = Class.$extend(
         this._redoHistory = [];
     },
 
+    /**
+        Checks if undo can be executed on this manager
+        @return {boolean} - true if undo can be executed
+    */
     canUndo : function()
     {
         return (this._undoHistory.length !== 0);
     },
 
+    /**
+        Checks if redo can be executed on this manager
+        @return {boolean} - true if redo can be executed
+    */
     canRedo : function()
     {
         return (this._redoHistory.length !== 0);
     },
+
+    /**
+        Returns the undo history in an array. <br>
+        It stores it as an array of objects with two properties: `id` and `commandString`. The `id` is the index of the command in the undo stack at the time of retrieving the history, while `commandString` is the command string in human-readable format.
+
+        @return {object[]} - The undo history represented as objects with properties `id` and `commandString`
+    */
 
     undoHistory : function()
     {
@@ -2311,6 +3615,12 @@ var UndoRedoManager = Class.$extend(
         return result;
     },
 
+    /**
+        Returns the redo history in an array. <br>
+        It stores it as an array of objects with two properties: `id` and `commandString`. The `id` is the index of the command in the undo stack at the time of retrieving the history, while `commandString` is the command string in human-readable format.
+
+        @return {object[]} - The redo history represented as objects with properties `id` and `commandString`
+    */
     redoHistory : function()
     {
         var result = [];
@@ -2329,6 +3639,12 @@ var UndoRedoManager = Class.$extend(
         return result;
     },
 
+    /**
+        Registers a callback for 'stateChanged' event.<br>
+        The stateChanged event is fired every time the history is changed. For example, every time a command has been added to the stack, or a command has been undone.
+        @param {object} context The context of the callback, i.e. the value of `this` pointer inside the body of the callback
+        @param {function} callback The callback to be called when the history is changed
+    */
     stateChanged : function(context, callback)
     {
         this.stateChangedCallbacks.push({
@@ -2353,6 +3669,12 @@ var UndoRedoManager = Class.$extend(
         }
     },
 
+    /**
+        Push a new command to the stack.<br>
+        Note: This method only adds the command to the stack, meaning you have to execute the command manually.
+        @param {ICommand} command The command to be pushed
+        @see {@link UndoRedoManager#pushAndExec}
+    */
     pushCommand : function(command)
     {
         this._redoHistory.length = 0;
@@ -2364,12 +3686,22 @@ var UndoRedoManager = Class.$extend(
         this._onStateChanged();
     },
 
+    /**
+        Push a new command to the stack, and executes it immediately.<br>
+        @param {ICommand} command The command to be pushed and executed
+        @see {@link UndoRedoManager#pushCommand}
+    */
     pushAndExec : function(command)
     {
         this.pushCommand(command);
         command.exec();
     },
 
+    /**
+        Execute undo.<br>
+        Removes the most recent command executed from the undo stack, calls 'undo' on it, and pushes it in the redo stack.
+        @param {boolean} [disconnected=false] Set this to true if the 'stateChanged' event should not be fired
+    */
     undo : function(disconnected)
     {
         if (!this.canUndo())
@@ -2386,6 +3718,11 @@ var UndoRedoManager = Class.$extend(
             this._onStateChanged();
     },
 
+    /**
+        Execute redo.<br>
+        Removes the most recent undone command from the redo stack, calls 'exec' on it, and pushes it in the undo stack.
+        @param {boolean} [disconnected=false] Set this to true if the 'stateChanged' event should not be fired
+    */
     redo : function(disconnected)
     {
         if (!this.canRedo())
@@ -2402,6 +3739,11 @@ var UndoRedoManager = Class.$extend(
             this._onStateChanged();
     },
 
+    /**
+        Executes 'undo' or 'redo' multiple times until it reaches the state given through 'commandId' parameter.<br>
+        The 'stateChanged' event fires only once, when it gets to the desired state.
+        @param {number} commandId The state to be set
+    */
     goToState : function(commandId)
     {
         if (commandId < 0)
@@ -2424,6 +3766,9 @@ var UndoRedoManager = Class.$extend(
         this._onStateChanged();
     },
 
+    /**
+        Clears the history, all commands are deleted irreversibly, and fires the 'stateChanged' event in the end.
+    */
     clear : function()
     {
         this._undoHistory.length = 0;
@@ -2434,16 +3779,23 @@ var UndoRedoManager = Class.$extend(
 });
 
 var ToolkitManager = Class.$extend(
+/** @lends ToolkitManager.prototype */
 {
-    __init__ : function()
+    /**
+        Toolkit manager. Provides the UI for the toolbar, tightly connected with the main editor instance.<br>
+        Do not create instances of the ToolkitManager, instead use {@link IEditor#toolkit}.
+        @constructs
+    */
+    __init__ : function(fontConfig)
     {
         this.toolbar = null;
         this.undoMenu = null;
         this.redoMenu = null;
         this.ui = {};
+        this.fontConfig = fontConfig || {};
     },
 
-    initUi : function()
+    initUi : function(gizmoAvailable)
     {
         this.ui.undoButton = $("<button/>", {
             id : "_toolkit-undoButton",
@@ -2550,6 +3902,36 @@ var ToolkitManager = Class.$extend(
 
         $("body").append(this.ui.redoMenu);
 
+        this.ui.saveButton = $("<button/>", {
+            id : "_toolkit-saveButton",
+            title : "Save"
+        });
+        this.ui.saveButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.saveButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-disk"
+            }
+        });
+
+        this.ui.loadButton = $("<button/>", {
+            id : "_toolkit-loadButton",
+            title : "Load"
+        });
+        this.ui.loadButton.css({
+            "width" : "40px",
+            "height" : "22px"
+        });
+        this.ui.loadButton.button({
+            text : false,
+            icons : {
+                primary : "ui-icon-folder-open"
+            }
+        });
+
         this.ui.quickAddButton = $("<button/>");
         this.ui.quickAddButton.text("Add...");
         this.ui.quickAddButton.css({
@@ -2615,7 +3997,7 @@ var ToolkitManager = Class.$extend(
         });
         this.ui.deleteButton.button("option", "disabled", true);
 
-        if (IEditor.Instance.type === "rocket")
+        if (IEditor.Instance.type === "webtundra")
         {
             this.ui.gridButton = $("<input/>", {
                 type : "checkbox",
@@ -2654,7 +4036,10 @@ var ToolkitManager = Class.$extend(
             this.ui.axesGridButtonSet.append(this.ui.axesButton);
 
             this.ui.axesGridButtonSet.buttonset();
+        }
 
+        if (gizmoAvailable)
+        {
             this.ui.translateButton = $("<input/>", {
                 type : "radio",
                 id : "_toolkit-radioTranslate",
@@ -2683,23 +4068,29 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.css({
                 "height" : "22px",
                 "font-size" : "10px",
-                "float" : "right"
+                "float" : "right",
+                "margin-top": -3
             });
 
             var labelTranslate = $("<label/>", {
                 "for" : "_toolkit-radioTranslate"
-            });
+            }).css(this.fontConfig);
             labelTranslate.text("Translate");
 
             var labelRotate = $("<label/>", {
                 "for" : "_toolkit-radioRotate"
-            });
+            }).css(this.fontConfig);
             labelRotate.text("Rotate");
 
             var labelScale = $("<label/>", {
                 "for" : "_toolkit-radioScale"
-            });
+            }).css(this.fontConfig);
             labelScale.text("Scale");
+
+
+            labelTranslate.css({ "font-size" : 13, border : "1px solid #009688" });
+            labelRotate.css({ "font-size" : 13, border : "1px solid #009688" });
+            labelScale.css({ "font-size" : 13, border : "1px solid #009688" });
 
             this.ui.transformButtonSet.append(this.ui.translateButton);
             this.ui.transformButtonSet.append(labelTranslate);
@@ -2711,61 +4102,35 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.buttonset("option", "disabled", true);
         }
 
-        this.ui.sceneTreeButton = $("<input/>",{
-            type : "radio",
-            id : "_toolkit-sceneTreeButton",
-            name : "panels",
-            checked : "checked"
-        });
-        this.ui.sceneTreeButton.data("isECEditor", false);
-
-        this.ui.ecEditorButton = $("<input/>", {
-            type : "radio",
-            id : "_toolkit-ecEditorButton",
-            name : "panels",
-        });
-        this.ui.ecEditorButton.data("isECEditor", true);
-
         this.ui.panelsButtonSet = $("<div/>", {
             id : "_toolkit-panelsButtonSet"
         });
-        this.ui.panelsButtonSet.css({
-            "height" : "22px",
-            "font-size" : "10px",
-            "float" : "right"
+        this.ui.panelsButtonSet.css(this.fontConfig).css({
+            "float"      : "right",
+            "height"     : 22,
+            "font-size"  : 11,
+            "margin-top" : -3
         });
 
-        var labelSceneTree = $("<label/>", {
-            "for" : "_toolkit-sceneTreeButton"
-        });
-        labelSceneTree.text("Scene tree");
-
-        var labelECEditor = $("<label/>", {
-            "for" : "_toolkit-ecEditorButton"
-        });
-        labelECEditor.text("EC editor");
-
-        this.ui.panelsButtonSet.append(this.ui.sceneTreeButton);
-        this.ui.panelsButtonSet.append(labelSceneTree);
-        this.ui.panelsButtonSet.append(this.ui.ecEditorButton);
-        this.ui.panelsButtonSet.append(labelECEditor);
         this.ui.panelsButtonSet.buttonset();
 
         if (isNotNull(this.toolbar))
         {
             this.toolbar.append(this.ui.undoButtonSet);
             this.toolbar.append(this.ui.redoButtonSet);
+            this.toolbar.append(this.ui.saveButton);
+            this.toolbar.append(this.ui.loadButton);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
             this.toolbar.append(this.ui.createButton);
             this.toolbar.append(this.ui.quickAddButton);
             this.toolbar.append(this.ui.deleteButton);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
-            if (IEditor.Instance.type === "rocket")
+            if (IEditor.Instance.type === "webtundra")
                 this.toolbar.append(this.ui.axesGridButtonSet);
 
             this.toolbar.append(this.ui.panelsButtonSet);
             this.toolbar.append($("<span style='margin:0 .2em'></span>"));
-            if (IEditor.Instance.type === "rocket")
+            if (isNotNull(this.ui.transformButtonSet))
                 this.toolbar.append(this.ui.transformButtonSet);
         }
 
@@ -2782,7 +4147,66 @@ var ToolkitManager = Class.$extend(
             IEditor.Instance.undoStack.redo();
         });
 
+        this.ui.saveButton.click(function(){
+            var dialog = new ModalDialog("SaveScene", "Save current state", 450, 100);
+            dialog.appendInputBox("saveSceneFilename", "Enter file name without a file extension", "string");
+            var buttons = {
+                "Ok" : function()
+                {
+                    var input = $("#saveSceneFilename");
+                    var filename = input.val();
+
+                    if (isNull(filename) || filename === "")
+                    {
+                        input.addClass(Utils.invalidDataName);
+                        return;
+                    }
+
+                    IEditor.Instance.save(filename);
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            };
+            dialog.addButtons(buttons);
+            dialog.exec();
+        });
+
+        this.ui.loadButton.click(function(){
+            var dialog = new ModalDialog("LoadScene", "Load previously saved scene", 450, 100);
+            dialog.appendInputBox("loadSceneInput", "Select the file by clicking on 'Choose file'. <br> <br> <strong>WARNING: Loading a scene will reset the scene and the editor, irreversibly removing everything! Save your changes before continuing!</strong><br><br>", "file");
+            var buttons = {
+                "Ok" : function()
+                {
+                    var input = $("#loadSceneInput");
+                    var filename = input.val();
+
+                    if (isNull(filename) || filename === "")
+                    {
+                        input.addClass(Utils.invalidDataName);
+                        return;
+                    }
+
+                    IEditor.Instance.load(input[0].files[0]);
+                    $(this).dialog("close");
+                    $(this).remove();
+                },
+                "Cancel" : function()
+                {
+                    $(this).dialog("close");
+                    $(this).remove();
+                }
+            };
+            dialog.addButtons(buttons);
+            dialog.exec();
+        })
+
         this.ui.undoArrowButton.click(function(){
+            $(".ui-menu").hide();
             var menu = $("#_toolkit-undoMenu");
             menu.show();
             menu.position({
@@ -2791,14 +4215,11 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                menu.hide();
-            });
-
             return false;
         });
 
         this.ui.redoArrowButton.click(function(){
+            $(".ui-menu").hide();
             var menu = $("#_toolkit-redoMenu");
             menu.show();
             menu.position({
@@ -2807,14 +4228,11 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                menu.hide();
-            });
-
             return false;
         });
 
         this.ui.createButton.click(function(){
+            $(".ui-menu").hide();
             self.ui.createMenu.show();
             self.ui.createMenu.position({
                 my : "left top",
@@ -2822,14 +4240,11 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                self.ui.createMenu.hide();
-            });
-
             return false;
         });
 
         this.ui.quickAddButton.click(function(){
+            $(".ui-menu").hide();
             self.ui.quickAddMenu.show();
             self.ui.quickAddMenu.position({
                 my : "left top",
@@ -2837,17 +4252,13 @@ var ToolkitManager = Class.$extend(
                 of : this
             });
 
-            $(document).one("click", function(){
-                self.ui.quickAddMenu.hide();
-            });
-
             return false;
         });
 
         this.ui.deleteButton.click(function(){
-            var dialog = ModalDialog.confirmationDialog("RemoveItem", 
+            var dialog = ModalDialog.confirmationDialog("RemoveItem",
                 "Remove edited object",
-                "Are you sure you want to remove the selected object?", 
+                "Are you sure you want to remove the selected object?",
                 function(){
                     IEditor.Instance.removeCurrent();
                 });
@@ -2882,7 +4293,7 @@ var ToolkitManager = Class.$extend(
             IEditor.Instance.quickCreateEntity(ui.item.text());
         });
 
-        if (IEditor.Instance.type === "rocket")
+        if (IEditor.Instance.type === "webtundra")
         {
             this.ui.gridButton.click(function()
             {
@@ -2898,16 +4309,47 @@ var ToolkitManager = Class.$extend(
                     IEditor.Instance.showAxes();
                 else
                     IEditor.Instance.hideAxes();
-            })
+            });
+        }
 
+        if (isNotNull(this.ui.transformButtonSet))
+        {
             this.ui.transformButtonSet.on("change", function(event){
                 IEditor.Instance.setTransformMode($(event.target).data("transformMode"));
             });
         }
 
         this.ui.panelsButtonSet.on("change", function(event){
-            IEditor.Instance.switchPanels($(event.target).data("isECEditor"));
+            IEditor.Instance.switchPanels($(event.target).data("panelName"));
         });
+
+        $("body:not(.ui-menu)").click(function() {
+            $(".ui-menu").hide();
+        })
+    },
+
+    appendPanelButton : function(panelName, label)
+    {
+        var panelButton = $("<input/>",{
+            type : "radio",
+            id : "_toolkit-" + panelName,
+            name : "panels",
+            checked : "checked"
+        });
+
+        panelButton.data("panelName", panelName);
+
+        var panelButtonLabel = $("<label/>", {
+            "for" : "_toolkit-" + panelName
+        });
+
+        panelButtonLabel.text(label).css(this.fontConfig).css({ "font-size" : 13 } );
+        panelButtonLabel.css({ "font-size" : 13, border : "1px solid #1976D2" });
+
+        this.ui.panelsButtonSet.append(panelButton);
+        this.ui.panelsButtonSet.append(panelButtonLabel);
+        this.ui.panelsButtonSet.buttonset("destroy");
+        this.ui.panelsButtonSet.buttonset();
     },
 
     onViewUndoStackClicked : function()
@@ -3032,7 +4474,7 @@ var ToolkitManager = Class.$extend(
         }];
 
         var quickAddItems = [{
-            text : "Movable", 
+            text : "Movable",
             icon: "ui-icon-arrow-4"
         },
         {
@@ -3129,6 +4571,7 @@ var ToolkitManager = Class.$extend(
 
         this.toolbar.css("width", width - IEditor.Instance.panelWidth);
     },
+
     onUndoRedoStateChanged : function(undoItems, redoItems, total)
     {
         this.ui.undoButtonSet.buttonset("option", "disabled", undoItems.length === 0);
@@ -3145,18 +4588,38 @@ var ToolkitManager = Class.$extend(
             this.ui.transformButtonSet.buttonset("option", "disabled", isNull(entityPtr));
     },
 
-    onPanelsSwitch : function(isECEditor)
+    onMultiSelect : function()
     {
-        this.ui.sceneTreeButton.prop("checked", !isECEditor);
-        this.ui.ecEditorButton.prop("checked", isECEditor);
+        this.ui.deleteButton.button("option", "disabled", true);
+    },
+
+    onPanelsSwitch : function(panelName)
+    {
+        var widget = this.ui.panelsButtonSet.buttonset("widget")[0];
+        for (var i = widget.children.length - 1; i >= 0; i--)
+        {
+            var child = widget.children[i];
+            if (child.localName === "input")
+            {
+                var pName = $(child).data("panelName");
+                $(child).prop("checked", panelName == pName);
+            }
+        }
+
         this.ui.panelsButtonSet.buttonset("refresh");
     },
 
+    /**
+        Shows the toolbar.
+    */
     show : function()
     {
         this.toolbar.show();
     },
 
+    /**
+        Hides the toolbar.
+    */
     hide : function()
     {
         this.toolbar.hide();
@@ -3262,6 +4725,11 @@ var ModalDialog = Class.$extend(
 
         inputElement.css({
             "float" : "right"
+        });
+
+        inputElement.on("keydown", function(event)
+        {
+            event.stopPropagation();
         });
 
         this.appendLabel(label);
@@ -3420,7 +4888,11 @@ var ModalDialog = Class.$extend(
             minHeight : this.height,
             modal : true,
             closeOnEscape : true,
-            buttons : this.buttons
+            buttons : this.buttons,
+            close : function()
+            {
+                $(this).remove();
+            }
         });
 
         this.element.dialog("open");

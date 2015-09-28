@@ -29,51 +29,144 @@ Other internal dependencies are
 * jQuery v2.0.3 (https://jquery.org/)
 * jQuery UI v1.10.3 (http://jqueryui.com/)
 * Fancytree v.2.0.0-5 (http://plugins.jquery.com/fancytree/)
-* jquery-contextMenu v1.7 (https://github.com/arnklint/jquery-contextMenu)
+* jqueryui-contextMenu v1.10 (https://github.com/mar10/jquery-ui-contextmenu/archive/v1.10.0.zip)
+* FileSaver.js (https://github.com/eligrey/FileSaver.js/)
+vkbeautify 0.99 (https://code.google.com/p/vkbeautify/downloads/detail?name=vkbeautify.0.99.00.beta.js)
 
 ## Software Installation and Configuration
 
-This section will be updated closer to the reference implementation software release.
-* First, download all dependencies from the links above. Add the scripts into the <head> section of your HTML file by doing:
-```
-   <script type="text/javascript" src="path/to/classy.js"></script>
-   <script type="text/javascript" src="path/to/jquery.js"></script>
-   <script type="text/javascript" src="path/to/jquery-ui.js"></script>
-   <script type="text/javascript" src="path/to/jquery.fancytree-all.min.js"></script>
-   <script type="text/javascript" src="path/to/jquery.contextmenu.js"></script>
-```
-* Add the following style sheets that come from JQuery UI and Fancytree dependencies also in the `<head>` section of your HTML file by doing:
-```
-   <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
-   <link rel="stylesheet" href="path/to/skin-win8/ui.fancytree.css">
-```
-
-* Finally, clone the GIT repository https://github.com/Adminotech/fiware-interface-designer. Inside there are three scripts: InterfaceDesigner-main.js, XML3DEditor.js and RocketEditor.webrocketjs.
-
 ### WebRocket
 
-* Add the RocketEditor.webrocketjs script to src/applications in the WebRocket code tree, and add InterfaceDesigner-main.js into src/lib
+* Extract or clone the Interface Designer in WEBROCKET_ROOT_DIRECTORY/src/application/editor
+* In the server side editor, add an entity with a "Script" component that will point to RocketEditor.webrocketjs
 
 ### XML3D
 
-* Download and add xml3d.js from (http://www.xml3d.org/xml3d/script/xml3d.js), and add it BEFORE all other scripts in the `<head>` section.
-* Add XML3DEditor.js and InterfaceDesigner-main.js as follows:
+* The xml3dExample.html is a complete ready-to-use example containing an HTML page that has an empty XML3D scene with Interface Designer installed.
 ```
-   <script type="text/javascript" src="path/to/InterfaceDesigner-main.js"></script>
-   <script type="text/javascript" src="path/to/XML3DEditor.js"></script>
+<!DOCTYPE HTML>
+<html>
+ <head>
+    <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
+    <link rel="stylesheet" href="lib/skin-win8/ui.fancytree.css">
+ 
+    <style>
+        #mainContent {
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+        }
+    </style>
+    <script type="text/javascript" src="lib/xml3d.js"></script>
+    <script type="text/javascript" src="lib/xml3d.tools.js"></script>
+    <script type="text/javascript" src="lib/jquery.js"></script>
+    <script type="text/javascript" src="lib/jquery-ui.js"></script> 
+    <script type="text/javascript" src="lib/jquery.fancytree-all.min.js"></script>
+    <script type="text/javascript" src="lib/jquery.ui-contextmenu.min.js"></script>
+    <script type="text/javascript" src="lib/FileSaver.min.js"></script>
+    <script type="text/javascript" src="lib/vkbeautify.0.99.00.beta.js"></script>
+    <script type="text/javascript" src="lib/classy.js"></script>
+    <script type="text/javascript" src="InterfaceDesigner-main.js"></script>
+    <script type="text/javascript" src="XML3DEditor.js"></script>
+ 
+ 
+    <script type="text/javascript">
+        window.addEventListener('load', function() {
+            var cameraTransformable = XML3D.tools.MotionFactory.createTransformable($("#mainCamera")[0]);
+            var camera = new XML3D.tools.MouseKeyboardFlyController(cameraTransformable, { moveSpeed: 0.2, rotateSpeed: 2 });
+            camera.attach();
+            // XML3D editor instance
+            var editor = new XML3DEditor({
+                mainContent: "mainContent", 
+                canvas: "mainCanvas", 
+                resourcesPath: "resources/"
+            });
+ 
+        }, false);
+    </script>
+ </head>
+ <body>
+    <div id="mainContent">
+        <xml3d xmlns="http://www.xml3d.org/2009/xml3d" id="mainCanvas" activeView="#cameraView" style="width:100%; height:100%;background-color:white;">
+            <defs>
+                <transform id="cameraTransform"></transform>
+            </defs>
+            <group id="mainCamera" transform="#cameraTransform">
+                <view id="cameraView"></view>
+            </group>
+        </xml3d>
+    </div>
+ </body>
+ </html>
 ```
-
-* While in the `<head>` section, add another `<script>` tag, and instantiate the editor. The constructor has two required arguments which are id-s to the main
-element and the main `<xml3d>` element. For best results, do a scene that has a `<div>` with a `<xml3d>` DOM tree as a child to said `<div>`:
+Let's breakdown the above code for better understanding.
+* First, the CSS styles are added for jquery UI, jquery.fancytree and styling of the mainContent div:
+```
+    <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
+    <link rel="stylesheet" href="lib/skin-win8/ui.fancytree.css">
+ 
+ 
+    <style>
+        #mainContent {
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+        }
+    </style>
+```
+* Later, the XML3D library is always added BEFORE all other libraries:
+```
+    <script type="text/javascript" src="lib/xml3d.js"></script>
+    <script type="text/javascript" src="lib/xml3d.tools.js"></script>
+    <script type="text/javascript" src="lib/jquery.js"></script>
+    <script type="text/javascript" src="lib/jquery-ui.js"></script> 
+    <script type="text/javascript" src="lib/jquery.fancytree-all.min.js"></script>
+    <script type="text/javascript" src="lib/jquery.ui-contextmenu.min.js"></script>
+    <script type="text/javascript" src="lib/FileSaver.min.js"></script>
+    <script type="text/javascript" src="lib/vkbeautify.0.99.00.beta.js"></script>
+    <script type="text/javascript" src="lib/classy.js"></script>
+```
+* Lastly, XML3DEditor.js and InterfaceDesigner-main.js are added as last:
+```
+    <script type="text/javascript" src="lib/InterfaceDesigner-main.js"></script>
+    <script type="text/javascript" src="lib/XML3DEditor.js"></script>
+```
+* This example uses XML3D Tools' Mouse/Keyboard Fly controller (camera). It is added in the window's 'load' event:
 ```
    <script type="text/javascript">
-       var editor = new XML3DEditor("id-of-main-DIV", "id-of-main-XML3D-element");
-   </script>
+        window.addEventListener('load', function() {
+            var cameraTransformable = XML3D.tools.MotionFactory.createTransformable($("#mainCamera")[0]);
+            var camera = new XML3D.tools.MouseKeyboardFlyController(cameraTransformable, { moveSpeed: 0.2, rotateSpeed: 2 });
+            camera.attach();
+            // XML3D editor instance
+            var editor = new XML3DEditor({
+                mainContent: "mainContent", 
+                canvas: "mainCanvas", 
+                resourcesPath: "resources/"
+            });
+        }, false);
+    </script>
+    <!-- etc etc... -->
 ```
-
-* Default shortcuts for toggling the editor (turning it on or off) is "shift" + "s", and switching between Scene Tree editor and EC editor panels is "shift" + "e". You can override these shortcuts by adding:
+* In the 'load' event, an instance of XML3DEditor is made that accepts an options JSON: mainContent is the variable that will hold the ID of the main <div> element, canvas holds the ID of the main <xml3d> element, and resourcesPath the path to the resources folder that comes with the package.
 ```
-    editor.setToggleEditorShortcut(metaKey, key1);
-    editor.setSwitchPanelsShortcut(metaKey, key2);
+        var editor = new XML3DEditor({
+            mainContent: "mainContent", 
+            canvas: "mainCanvas", 
+            resourcesPath: "resources/"
+        });
 ```
-* Accepted values for metaKey are `shift`, `ctrl`, `meta`, and `alt`, and `key1` and `key2` could be any character on the keyboard.
+* Finally, we have the "main scene" in <body> element. It consists of a <div> element with ID mainContent that has only one child element <xml3d> with ID mainCanvas that will contain the whole XML3D scene:
+```
+ <body>
+    <div id="mainContent">
+        <xml3d xmlns="http://www.xml3d.org/2009/xml3d" id="mainCanvas" activeView="#cameraView" style="width:100%; height:100%;background-color:white;">
+            <defs>
+                <transform id="cameraTransform"></transform>
+            </defs>
+            <group id="mainCamera" transform="#cameraTransform">
+                <view id="cameraView"></view>
+            </group>
+        </xml3d>
+    </div>
+ </body>
+ </html>
+```

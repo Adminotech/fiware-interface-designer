@@ -1,16 +1,17 @@
 define([
         "lib/classy",
         "lib/three",
-        "lib/three-TransformControls",
-        "core/framework/TundraSDK",
+        "core/framework/Tundra",
         "core/script/IApplication",
         "core/scene/Scene",
         "core/scene/IComponent",
         "core/scene/Attribute",
         "core/scene/AttributeChange",
         "core/math/Transform",
-        "lib/InterfaceDesigner-main"
-    ], function(Class, THREE, __tc, TundraSDK, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, _Editor) {
+        "core/frame/AsyncHelper",
+        "application/editor/InterfaceDesigner-main",
+        "application/editor/lib/jquery.ui-contextmenu.min"
+    ], function(Class, THREE, Tundra, IApplication, Scene, IComponent, Attribute, AttributeChange, Transform, AsyncHelper, _Editor, _jquicm) {
 
 var AddEntityCommand = ICommand.$extend(
 {
@@ -315,6 +316,45 @@ var AttributeChangeCommand = ICommand.$extend(
     },
 });
 
+var MultiTransformCommand = ICommand.$extend(
+{
+    __init__ : function(states)
+    {
+        this.$super("* transform " + states.length + " entity(s)");
+        this.states = [];
+        for (var i = states.length - 1; i >= 0; i--)
+        {
+            this.states.push({
+                id : states[i].target.parentEntity.id,
+                before: states[i].before,
+                after: states[i].after
+            });
+        }
+    },
+
+    exec : function()
+    {
+        for (var i = this.states.length - 1; i >= 0; i--)
+        {
+            var id = this.states[i].id;
+            var entity = Tundra.scene.entityById(id);
+            if (entity && entity.placeable)
+                entity.placeable.transform = this.states[i].after;
+        }
+    },
+
+    undo : function()
+    {
+        for (var i = this.states.length - 1; i >= 0; i--)
+        {
+            var id = this.states[i].id;
+            var entity = Tundra.scene.entityById(id);
+            if (entity && entity.placeable)
+                entity.placeable.transform = this.states[i].before;
+        }
+    }
+});
+
 var CreatePrimitiveCommand = ICommand.$extend(
 {
     __init__ : function(scenePtr, primitiveType, meshRef)
@@ -399,7 +439,7 @@ var TransformCommand = ICommand.$extend(
     }
 });
 
-var RocketKeyEvent = KeyEventWrapper.$extend(
+var TundraKeyEvent = KeyEventWrapper.$extend(
 {
     __init__ : function(keyEvent)
     {
@@ -411,10 +451,11 @@ var RocketKeyEvent = KeyEventWrapper.$extend(
         this.key = keyEvent.key;
         this.repeat = keyEvent.repeat;
         this.pressed = keyEvent.pressed;
+        this.originalEvent = keyEvent.originalEvent.originalEvent;
     }
 });
 
-var RocketMouseEvent = MouseEventWrapper.$extend(
+var TundraMouseEvent = MouseEventWrapper.$extend(
 {
     __init__ : function(mouseEvent)
     {
@@ -435,10 +476,11 @@ var RocketMouseEvent = MouseEventWrapper.$extend(
         this.targetId = mouseEvent.targetId;
         this.targetNodeName = mouseEvent.targetNodeName;
         this.originalEvent = mouseEvent.originalEvent;
+        this.shiftPressed = Tundra.input.keyboard.pressed["shift"];
     }
 });
 
-var RocketScene = SceneWrapper.$extend(
+var TundraScene = SceneWrapper.$extend(
 {
     __init__ : function()
     {
@@ -448,19 +490,19 @@ var RocketScene = SceneWrapper.$extend(
     entities : function()
     {
         var result = [];
-        var entities = TundraSDK.framework.scene.entities;
+        var entities = Tundra.scene.entities;
         for (var i = 0; i < entities.length; i++)
             if (isNotNull(entities[i]))
-                result.push(new RocketEntity(entities[i]));
+                result.push(__(TundraEntity, entities[i]));
 
         return result;
     },
 
     entityById : function(entityId)
     {
-        var entityPtr = TundraSDK.framework.scene.entityById(entityId);
+        var entityPtr = Tundra.scene.entityById(entityId);
         if (entityPtr !== null && entityPtr !== undefined)
-            return new RocketEntity(entityPtr);
+            return __(TundraEntity, entityPtr);
 
         return null;
     },
@@ -473,14 +515,21 @@ var RocketScene = SceneWrapper.$extend(
             componentsReplicated = replicated;
         if (isNotNull(replicated) && isNull(change))
             change = replicated ? AttributeChange.Replicated : AttributeChange.LocalOnly;
+        if (isNull(id) || id == 0)
+        {
+            if (replicated)
+                id = Tundra.scene.nextFreeId();
+            else
+                id = Tundra.scene.nextFreeIdLocal();
+        }
 
-        var entity = TundraSDK.framework.scene.createEntity(id, components, change, replicated, componentsReplicated);
-        return new RocketEntity(entity);
+        var entity = Tundra.scene.createEntity(id, components, change, replicated, componentsReplicated);
+        return __(TundraEntity, entity);
     },
 
     removeEntity : function(entityId)
     {
-        TundraSDK.framework.scene.removeEntity(entityId);
+        Tundra.scene.removeEntity(entityId);
     },
 
     deserializeFrom : function(str)
@@ -525,8 +574,8 @@ var RocketScene = SceneWrapper.$extend(
 
     doRaycast : function(x, y, selectionLayer)
     {
-        var result = TundraSDK.framework.renderer.raycast(x, y, selectionLayer);
-        return new RocketRaycastResult(result);
+        var result = Tundra.renderer.raycast(x, y, selectionLayer);
+        return new TundraRaycastResult(result);
     },
 
     isAttributeAtomic : function(attrTypeId)
@@ -594,82 +643,106 @@ var RocketScene = SceneWrapper.$extend(
 
     reset : function()
     {
-        TundraSDK.framework.scene.reset();
+        Tundra.scene.reset();
     },
 
     unsubscribe : function(subscription)
     {
-        TundraSDK.framework.events.unsubscribe(subscription);
+        Tundra.events.unsubscribe(subscription);
     },
 
     entityCreated : function(context, callback)
     {
         this.registerCallback("onEntityCreated", context, callback);
-        return TundraSDK.framework.scene.onEntityCreated(this, this._onEntityCreated);
+        return Tundra.scene.onEntityCreated(this, this._onEntityCreated);
     },
 
     entityRemoved : function(context, callback)
     {
         this.registerCallback("onEntityRemoved", context, callback);
-        return TundraSDK.framework.scene.onEntityRemoved(this, this._onEntityRemoved);
+        return Tundra.scene.onEntityRemoved(this, this._onEntityRemoved);
     },
 
     componentCreated : function(context, callback)
     {
         this.registerCallback("onComponentCreated", context, callback);
-        return TundraSDK.framework.scene.onComponentCreated(this, this._onComponentCreated);
+        return Tundra.scene.onComponentCreated(this, this._onComponentCreated);
     },
 
     componentRemoved : function(context, callback)
     {
         this.registerCallback("onComponentRemoved", context, callback);
-        return TundraSDK.framework.scene.onComponentRemoved(this, this._onComponentRemoved);
+        return Tundra.scene.onComponentRemoved(this, this._onComponentRemoved);
     },
 
     attributeChanged : function(context, callback)
     {
         this.registerCallback("onAttributeChanged", context, callback);
-        return TundraSDK.framework.scene.onAttributeChanged(this, this._onAttributeChanged);
+        return Tundra.scene.onAttributeChanged(this, this._onAttributeChanged);
     },
 
     sceneReset : function(context, callback)
     {
         this.registerCallback("onSceneReset", context, callback);
-        return TundraSDK.framework.scene.onReset(this, this._onSceneReset);
+        return Tundra.scene.onReset(this, this._onSceneReset);
     },
 
     _onEntityCreated : function(entityPtr)
     {
-        var entity = new RocketEntity(entityPtr);
+        var entity = __(TundraEntity, entityPtr);
         this.callback("onEntityCreated", entity);
     },
 
     _onEntityRemoved : function(entityPtr)
     {
-        var entity = new RocketEntity(entityPtr);
+        var entity = __(TundraEntity, entityPtr);
         this.callback("onEntityRemoved", entity);
+        if (IEditor.Instance.transformEditor)
+        {
+            for (var i = IEditor.Instance.transformEditor.targets.length - 1; i >= 0; i--) {
+                var target = IEditor.Instance.transformEditor.targets[i].parentEntity;
+                if (target.id == entity.id)
+                {
+                    IEditor.Instance.transformEditor.clearSelection();
+                    break;
+                }
+            };
+        }
     },
 
     _onComponentCreated : function(entityPtr, componentPtr)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(TundraEntity, entityPtr);
+        var component = __(TundraComponent, componentPtr);
 
         this.callback("onComponentCreated", entity, component);
     },
 
     _onComponentRemoved : function(entityPtr, componentPtr)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(TundraEntity, entityPtr);
+        var component = __(TundraComponent, componentPtr);
 
         this.callback("onComponentRemoved", entity, component);
+
+        if (IEditor.Instance.transformEditor)
+        {
+            for (var i = IEditor.Instance.transformEditor.targets.length - 1; i >= 0; i--) {
+                var targetComp = IEditor.Instance.transformEditor.targets[i];
+                var target = IEditor.Instance.transformEditor.targets[i].parentEntity;
+                if (target.id == entity.id && targetComp.id == componentPtr.id)
+                {
+                    IEditor.Instance.transformEditor.clearSelection();
+                    break;
+                }
+            };
+        }
     },
 
     _onAttributeChanged : function(entityPtr, componentPtr, attributeIndex, attributeName, attributeValue)
     {
-        var entity = new RocketEntity(entityPtr);
-        var component = new RocketComponent(componentPtr);
+        var entity = __(TundraEntity, entityPtr);
+        var component = __(TundraComponent, componentPtr);
 
         this.callback("onAttributeChanged", entity, component, attributeIndex, attributeName, attributeValue);
     },
@@ -681,21 +754,21 @@ var RocketScene = SceneWrapper.$extend(
 
     logInfo : function(text)
     {
-        TundraSDK.framework.client.logInfo("[Editor]: " + text);
+        Tundra.client.logInfo("[Editor]: " + text);
     },
 
     logWarning : function(text)
     {
-        TundraSDK.framework.client.logWarning("[Editor]: " + text);
+        Tundra.client.logWarning("[Editor]: " + text);
     },
 
     logError : function(text)
     {
-        TundraSDK.framework.client.logError("[Editor]: " + text);
-    }    
+        Tundra.client.logError("[Editor]: " + text);
+    }
 });
 
-var RocketEntity = EntityWrapper.$extend(
+var TundraEntity = EntityWrapper.$extend(
 {
     __init__ : function(entityPtr)
     {
@@ -703,6 +776,8 @@ var RocketEntity = EntityWrapper.$extend(
         this._ptr = entityPtr;
 
         this.callbacks = {};
+
+        // entityPtr.InterfaceDesignerWrapper = this;
     },
 
     setName : function(name)
@@ -728,7 +803,7 @@ var RocketEntity = EntityWrapper.$extend(
         for (var i = 0; i < this._ptr.components.length; i++)
         {
             var componentPtr = this._ptr.components[i];
-            result.push(new RocketComponent(componentPtr));
+            result.push(__(TundraComponent, componentPtr));
         }
 
         return result;
@@ -742,7 +817,7 @@ var RocketEntity = EntityWrapper.$extend(
         var attrChange = isLocal ? AttributeChange.LocalOnly : AttributeChange.Replicated;
         var componentPtr = this._ptr.createComponent(typeName, name, attrChange);
         if (isNotNull(componentPtr))
-            return new RocketComponent(componentPtr);
+            return __(TundraComponent, componentPtr);
 
         return null;
     },
@@ -759,7 +834,7 @@ var RocketEntity = EntityWrapper.$extend(
 
         var componentPtr = this._ptr.getComponent(type, name);
         if (componentPtr !== null && componentPtr !== undefined)
-            return new RocketComponent(componentPtr);
+            return __(TundraComponent, componentPtr);
 
         return null;
     },
@@ -771,7 +846,7 @@ var RocketEntity = EntityWrapper.$extend(
 
         var componentPtr = this._ptr.getComponentById(componentId);
         if (componentPtr !== null && componentPtr !== undefined)
-            return new RocketComponent(componentPtr);
+            return __(TundraComponent, componentPtr);
 
         return null;
     },
@@ -811,37 +886,9 @@ var RocketEntity = EntityWrapper.$extend(
                 componentPtr.deserialize(component);
         }
     },
-
-    onComponentCreated : function(context, callback)
-    {
-        this.registerCallback("onComponentCreated", context, callback);
-        return this._ptr.onComponentCreated(this, this._onComponentCreated);
-    },
-
-    onComponentRemoved : function(context, callback)
-    {
-        this.registerCallback("onComponentRemoved", context, callback);
-        return this._ptr.onComponentRemoved(this, this._onComponentRemoved);
-    },
-
-    _onComponentCreated : function(entity, component)
-    {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
-
-        this.callback("onComponentCreated", entityPtr, componentPtr);
-    },
-
-    _onComponentRemoved : function(entity, component)
-    {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
-
-        this.callback("onComponentRemoved", entityPtr, componentPtr);
-    }
 });
 
-var RocketComponent = ComponentWrapper.$extend(
+var TundraComponent = ComponentWrapper.$extend(
 {
     __init__ : function(componentPtr)
     {
@@ -849,6 +896,8 @@ var RocketComponent = ComponentWrapper.$extend(
         this._ptr = componentPtr;
 
         this.callbacks = {};
+
+        // componentPtr.InterfaceDesignerWrapper = this;
     },
 
     isDynamic : function()
@@ -877,7 +926,7 @@ var RocketComponent = ComponentWrapper.$extend(
         {
             var attributePtr = this._ptr.attributes[i];
             if (isNotNull(attributePtr))
-                result.push(new RocketAttribute(attributePtr, this));
+                result.push(__(TundraAttribute, attributePtr, this));
         }
 
         return result;
@@ -898,7 +947,7 @@ var RocketComponent = ComponentWrapper.$extend(
 
         var attributePtr = this._ptr.attributes[name];
         if (isNotNull(attributePtr))
-            return new RocketAttribute(attributePtr, this);
+            return __(TundraAttribute, attributePtr, this);
 
         return null;
     },
@@ -908,7 +957,7 @@ var RocketComponent = ComponentWrapper.$extend(
         if (this.expired())
             return null;
 
-        return new RocketAttribute(this._ptr.getAttributeByIndex(index), this);
+        return __(TundraAttribute, this._ptr.getAttributeByIndex(index), this);
     },
 
     removeAttribute : function(index)
@@ -970,15 +1019,6 @@ var RocketComponent = ComponentWrapper.$extend(
         return this._ptr.onAttributeAdded(this, this._onAttributeAdded);
     },
 
-    onAttributeChanged : function(context, callback)
-    {
-        if (this.expired())
-            return;
-
-        this.registerCallback("onAttributeChanged", context, callback);
-        return this._ptr.onAttributeChanged(this, this._onAttributeChanged);
-    },
-
     onAttributeAboutToBeRemoved : function(context, callback)
     {
         if (this.expired())
@@ -993,40 +1033,34 @@ var RocketComponent = ComponentWrapper.$extend(
 
     _onAttributeAdded : function(component, attribute)
     {
-        var componentPtr = new RocketComponent(component);
-        var attributePtr = new RocketAttribute(attribute, componentPtr);
+        var componentPtr = __(TundraComponent, component);
+        var attributePtr = __(TundraAttribute, attribute, componentPtr);
 
         this.callback("onAttributeAdded", componentPtr, attributePtr);
     },
 
-    _onAttributeChanged : function(entity, component, attributeIndex, attributeName, attributeValue)
-    {
-        var entityPtr = new RocketEntity(entity);
-        var componentPtr = new RocketComponent(component);
-
-        this.callback("onAttributeChanged", entityPtr, componentPtr, attributeIndex, attributeName, attributeValue);
-    },
-
     _onAttributeAboutToBeRemoved : function(component, attributeIndex, attributeName)
     {
-        var componentPtr = new RocketComponent(component);
+        var componentPtr = __(TundraComponent, component);
 
         this.callback("onAttributeAboutToBeRemoved", componentPtr, attributeIndex, attributeName);
     }
 });
 
-var RocketAttribute = AttributeWrapper.$extend(
+var TundraAttribute = AttributeWrapper.$extend(
 {
     __init__ : function(attributePtr, owner)
     {
         var parent = null;
         if (isNull(owner))
-            parent = new RocketComponent(attributePtr.owner);
+            parent = __(TundraComponent, attributePtr.owner);
         else
             parent = owner;
 
         this.$super(attributePtr.index, attributePtr.typeId, attributePtr.name, parent);
         this._ptr = attributePtr;
+
+        // attributePtr.InterfaceDesignerWrapper = this;
     },
 
     get : function()
@@ -1047,7 +1081,7 @@ var RocketAttribute = AttributeWrapper.$extend(
 
     serialize : function()
     {
-        var result = { 
+        var result = {
             name : this.name,
             typeId : this.typeId,
             index : this.index
@@ -1059,7 +1093,7 @@ var RocketAttribute = AttributeWrapper.$extend(
                 pos : value.pos,
                 rot : value.rot,
                 scale : value.scale
-            };       
+            };
         else
             result.value = value;
 
@@ -1083,16 +1117,16 @@ var RocketAttribute = AttributeWrapper.$extend(
     }
 });
 
-var RocketRaycastResult = RaycastResult.$extend(
+var TundraRaycastResult = RaycastResult.$extend(
 {
     __init__ : function(raycastResult)
     {
         this.$super();
 
         if (isNotNull(raycastResult.entity))
-            this.entity = new RocketEntity(raycastResult.entity);
+            this.entity = __(TundraEntity, raycastResult.entity);
         if (isNotNull(raycastResult.component))
-            this.component = new RocketComponent(raycastResult.component);
+            this.component = __(TundraComponent, raycastResult.component);
 
         this.pos = raycastResult.pos;
         this.distance = raycastResult.distance;
@@ -1102,16 +1136,18 @@ var RocketRaycastResult = RaycastResult.$extend(
     }
 });
 
-var RocketEditor = IEditor.$extend(
+var TundraEditor = IEditor.$extend(
 {
-    __classvars__ : 
+    __classvars__ :
     {
         scene : null
     },
 
-    __init__ : function()
+    __init__ : function(options)
     {
-        this.$super("rocket");
+        this.$super(options);
+
+        $("head").append('<link rel="stylesheet" href="../src/application/editor/lib/skin-win8/ui.fancytree.css">');
 
         this.meshRefs = {
             "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
@@ -1125,99 +1161,171 @@ var RocketEditor = IEditor.$extend(
         this.gridHelper.setColors(new THREE.Color(0xFF0000), new THREE.Color(0x000000));
     },
 
-    /* virtual */ 
+    /* virtual */
+    defaultFontConfig : function()
+    {
+        return {
+            "font-family"    : '"Roboto", sans-serif',
+            "font-size"      : "14px",
+            "text-transform" : "uppercase"
+        };
+    },
+
+    /* virtual */
+    defaultMonospaceFontConfig : function()
+    {
+        return {
+            "font-family" : '"Source Code Pro", monospace'
+        };
+    },
+
+    /* virtual */
     isConnected : function()
     {
-        return TundraSDK.framework.client.isConnected();
+        return Tundra.client.isConnected();
     },
 
     /* virtual */
     width : function()
     {
-        return TundraSDK.framework.client.container.width();
+        return this.container().width();
     },
 
     /* virtual */
     height : function()
     {
-        var containerHeight = TundraSDK.framework.client.container.height();
-        var taskbarHeight = TundraSDK.framework.ui.taskbar.height();
-
+        var containerHeight = this.container().height();
+        var taskbarHeight = (this.taskbar() ? this.taskbar().height() : 0);
         return containerHeight - taskbarHeight;
     },
 
     taskbar : function()
     {
-        return TundraSDK.framework.client.ui.taskbar;
+        return (Tundra.usingPolymer() && Tundra.ui.taskbar ? undefined : Tundra.ui.taskbar);
     },
 
     container : function()
     {
-        return TundraSDK.framework.client.container;
+        return (Tundra.usingPolymer() ? $("body") : Tundra.container);
     },
 
     /* pure virtual */
-    addWidget : function(element)
+    addWidget : function(element, type)
     {
-        TundraSDK.framework.ui.addWidgetToScene(element);
+        $("body").append(element);
+
+        element._tundraType = type;
+        if (!Array.isArray(this._tundraElements))
+            this._tundraElements = [];
+        this._tundraElements.push(element);
     },
 
-    /* pure virtual */ 
+    setEnabled : function(enabled)
+    {
+        this.$super(enabled);
+
+        if (!Array.isArray(this._tundraElements))
+            return;
+
+        for (var i = 0; i < this._tundraElements.length; i++)
+        {
+            var element = this._tundraElements[i];
+            if (element._tundraType === "top")
+            {
+                Tundra.container.css({
+                    top    : (enabled ? element.outerHeight(true) : ""),
+                    height : (enabled ? "calc(100% - " + element.outerHeight(true) + "px)" : "100%")
+                });
+            }
+            else if (element._tundraType === "right")
+            {
+                Tundra.container.css({
+                    width : (enabled ? "calc(100% - " + element.outerWidth(true) + "px)" : "100%")
+                });
+            }
+        };
+
+        Tundra.ui.onWindowResizeDOM();
+        AsyncHelper.async(Tundra.ui.onWindowResizeDOM.bind(Tundra.ui));
+    },
+
+    /* pure virtual */
     registerClientConnectedCallback : function(context, callback)
     {
-        TundraSDK.framework.client.onConnected(context, callback);
+        Tundra.client.onConnected(context, callback);
     },
 
-    /* pure virtual */ 
+    /* pure virtual */
     registerKeyEventCallback : function(context, callback)
     {
         this.registerCallback("onKeyEvent", context, callback);
-        TundraSDK.framework.input.onKeyEvent(this, this.onKeyEvent);
+        Tundra.input.onKeyEvent(this, this.onKeyEvent, 1000);
     },
 
-    /* pure virtual */ 
+    /* pure virtual */
     registerMouseEventCallback : function(context, callback)
     {
         this.registerCallback("onMouseEvent", context, callback);
-        TundraSDK.framework.input.onMouseEvent(this, this.onMouseEvent);
+        Tundra.input.onMousePress(this, this.onMouseEvent, 1000);
+        Tundra.input.onMouseRelease(this, this.onMouseEvent, 1000);
     },
 
     /* pure virtual */
     registerResizeEventCallback : function(context, callback)
     {
         this.registerCallback("onResizeEvent", context, callback);
-        TundraSDK.framework.ui.onWindowResize(this, this.onResizeEvent);
+        Tundra.ui.onWindowResize(this, this.onResizeEvent);
     },
 
     registerSceneObject : function()
     {
-        RocketEditor.scene = new RocketScene();
-        return RocketEditor.scene;
+        TundraEditor.scene = new TundraScene();
+        return TundraEditor.scene;
     },
 
     onKeyEvent : function(keyEvent)
     {
-        this.callback("onKeyEvent", new RocketKeyEvent(keyEvent));
+        var wrapper = new TundraKeyEvent(keyEvent);
+        this.callback("onKeyEvent", wrapper);
+        return (!wrapper.suppressed);
     },
 
     onMouseEvent : function(mouseEvent)
     {
-        this.callback("onMouseEvent", new RocketMouseEvent(mouseEvent));
+        var wrapper = new TundraMouseEvent(mouseEvent);
+        this.callback("onMouseEvent", wrapper);
+
+        // @todo Fix this correctly by doing actions like selecting entity on "release" instead of "press"
+        // this has to happen in InterfaceDesigner-main.js not here. But we need to provide it enough info
+        // as in if left button was down on the previous "press".
+        var suppressed = wrapper.suppressed;
+        if (mouseEvent.type === "release")
+        {
+            suppressed = (this._lastMouseSuppressed === true);
+            this._lastMouseSuppressed = false;
+        }
+        else
+            this._lastMouseSuppressed = wrapper.suppressed;
+        return (!wrapper.suppressed);
     },
 
     onResizeEvent : function(width, height)
     {
-        this.callback("onResizeEvent", width, height);
+        var body = $("body");
+        this.callback("onResizeEvent", body.width(), body.height());
     },
 
     initTransformEditor : function()
     {
-        this.transformEditor = new TransformEditor();
+        this.transformEditor = Tundra.Classes.PlaceableUtils.Gizmo;
+        Tundra.events.subscribe("TransformEditor.MultiTransform", function(states) {
+            this.multiTransformCommand(states);
+        }.bind(this));
     },
 
     createPrimitive : function(type)
     {
-        this.undoStack.pushAndExec(new CreatePrimitiveCommand(RocketEditor.scene, type, this.meshRefs[type]));
+        this.undoStack.pushAndExec(new CreatePrimitiveCommand(TundraEditor.scene, type, this.meshRefs[type]));
     },
 
     createMovable : function()
@@ -1237,42 +1345,42 @@ var RocketEditor = IEditor.$extend(
 
     showGrid : function()
     {
-        TundraSDK.framework.renderer.scene.add(this.gridHelper);
+        Tundra.renderer.scene.add(this.gridHelper);
     },
 
     hideGrid : function()
     {
-        TundraSDK.framework.renderer.scene.remove(this.gridHelper);
+        Tundra.renderer.scene.remove(this.gridHelper);
     },
 
     showAxes : function()
     {
-        TundraSDK.framework.renderer.scene.add(this.axisHelper);
+        Tundra.renderer.scene.add(this.axisHelper);
     },
 
     hideAxes : function()
     {
-        TundraSDK.framework.renderer.scene.remove(this.axisHelper);
+        Tundra.renderer.scene.remove(this.axisHelper);
     },
 
     addEntityCommand : function(components, entityName, replicated)
     {
-        this.undoStack.pushAndExec(new AddEntityCommand(RocketEditor.scene, components, entityName, replicated));
+        this.undoStack.pushAndExec(new AddEntityCommand(TundraEditor.scene, components, entityName, replicated));
     },
 
     removeEntityCommand : function(entityPtr)
     {
-        this.undoStack.pushAndExec(new RemoveEntityCommand(RocketEditor.scene, entityPtr));
+        this.undoStack.pushAndExec(new RemoveEntityCommand(TundraEditor.scene, entityPtr));
     },
 
     addComponentCommand : function(entityId, compType, compName, isLocal, temporary)
     {
-        this.undoStack.pushAndExec(new AddComponentCommand(RocketEditor.scene, entityId, compType, compName, isLocal, temporary));
+        this.undoStack.pushAndExec(new AddComponentCommand(TundraEditor.scene, entityId, compType, compName, isLocal, temporary));
     },
 
     removeComponentCommand : function(componentPtr)
     {
-        this.undoStack.pushAndExec(new RemoveComponentCommand(RocketEditor.scene, componentPtr));
+        this.undoStack.pushAndExec(new RemoveComponentCommand(TundraEditor.scene, componentPtr));
     },
 
     addAttributeCommand : function(componentPtr, attrTypeId, attrName)
@@ -1281,130 +1389,44 @@ var RocketEditor = IEditor.$extend(
         if (isNotNull(existing))
             return false;
 
-        this.undoStack.pushAndExec(new AddAttributeCommand(RocketEditor.scene, componentPtr, attrName, attrTypeId));
+        this.undoStack.pushAndExec(new AddAttributeCommand(TundraEditor.scene, componentPtr, attrName, attrTypeId));
         return true;
     },
 
     removeAttributeCommand : function(attributePtr)
     {
-        this.undoStack.pushAndExec(new RemoveAttributeCommand(RocketEditor.scene, attributePtr));   
+        this.undoStack.pushAndExec(new RemoveAttributeCommand(TundraEditor.scene, attributePtr));
     },
 
     changeAttributeCommand : function(attributePtr, newValue)
     {
-        this.undoStack.pushAndExec(new AttributeChangeCommand(RocketEditor.scene, attributePtr, newValue));
-    }
-});
-
-var TransformEditor = Class.$extend(
-{
-   __init__ : function()
-    {
-        var camera = TundraSDK.framework.renderer.camera;
-        var domElement = TundraSDK.framework.renderer.renderer.domElement;
-
-        this.targetPlaceable = null;
-        this.cameraSubscription = null;
-
-        this.oldTransform = null;
-
-        this.transformControl = new THREE.TransformControls(camera, domElement);
-        this.transformControl.setSpace("local");
-        this.transformControl.addEventListener("change", this.onUpdate.bind(this));
-        this.transformControl.addEventListener("dragStop", this.onDragStopped.bind(this));
-
-        this.cameraSubscription = TundraSDK.framework.renderer.onActiveCameraChanged(this, this.onActiveCameraChanged);
-        TundraSDK.framework.frame.onUpdate(this, this.onFrameUpdate);
+        this.undoStack.pushAndExec(new AttributeChangeCommand(TundraEditor.scene, attributePtr, newValue));
     },
 
-    setTargetEntity : function(entity)
+    multiTransformCommand : function(states)
     {
-        this.oldTransform = null;
+        this.undoStack.pushCommand(new MultiTransformCommand(states));
+    },
 
-        if (isNull(entity))
-            return;
+    save : function(filename)
+    {
+        var sceneTxml = Tundra.scene.serializeToXml();
+        var sceneTxmlString = new XMLSerializer().serializeToString(sceneTxml);
+        var blob = new Blob([vkbeautify.xml(sceneTxmlString)], {type: "text/xml;charset=utf-8"});
+        saveAs(blob, filename + ".txml");
+    },
 
-        var entityPtr = entity._ptr;
-
-        this.targetPlaceable = entityPtr.getComponent("Placeable");
-        if (isNull(this.targetPlaceable))
+    load : function(fileObject)
+    {
+        var reader = new FileReader();
+        reader.addEventListener("loadend", function(e)
         {
-            this.clearSelection();
-            return;
-        }
-
-        this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
-        this.transformControl.attach(this.targetPlaceable.sceneNode);
-        TundraSDK.framework.renderer.scene.add(this.transformControl);
-    },
-
-    setMode : function(mode)
-    {
-        this.transformControl.setMode(mode);
-    },
-
-    onFrameUpdate : function(frametime)
-    {
-        if (this.transformControl.isAttached())
-            this.transformControl.update();
-    },
-
-    onActiveCameraChanged : function(activeCam, previousCam)
-    {
-        this.transformControl.setCamera(activeCam.camera);
-    },
-
-    onUpdate : function(event)
-    {
-        var transform = this.targetPlaceable.attribute("transform").getClone();
-        transform.setPosition(this.targetPlaceable.sceneNode.position.clone());
-        transform.setRotation(this.targetPlaceable.sceneNode.quaternion.clone());
-        transform.setScale(this.targetPlaceable.sceneNode.scale.clone());
-
-        this.targetPlaceable.attribute("transform").set(transform);
-    },
-
-    onDragStopped : function(event)
-    {
-        if (event.detail.object === this.targetPlaceable.sceneNode)
-        {
-            var value = null;
-            var newValue = null;
-            var transform = this.targetPlaceable.attribute("transform").getClone();
-
-            if (event.detail.mode === "translate")
-            {
-                value = this.oldTransform.pos.clone();
-                newValue = transform.pos;
-            }
-            else if (event.detail.mode === "rotate")
-            {
-                value = this.oldTransform.rot.clone();
-                newValue = transform.rot;
-            }
-            else if (event.detail.mode === "scale")
-            {
-                value = this.oldTransform.scale.clone();
-                newValue = transform.scale;
-            }
-
-            IEditor.Instance.undoStack.pushCommand(new TransformCommand(TundraSDK.framework.scene, this.targetPlaceable, event.detail.mode, value, newValue));
-
-            this.oldTransform = this.targetPlaceable.attribute("transform").getClone();
-        }
-    },
-
-    clearSelection : function()
-    {
-        if (isNotNull(this.cameraSubscription))
-            TundraSDK.framework.events.unsubscribe(this.cameraSubscription);
-
-        this.transformControl.detach();
-        TundraSDK.framework.renderer.scene.remove(this.transformControl);
-
-        this.targetPlaceable = null;
-        this.cameraSubscription = null;
-        this.oldTransform = null;
+            var txt = e.target.result;
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(txt, "text/xml");
+            Tundra.scene.deserializeFromXml(xmlDoc);
+        });
+        reader.readAsText(fileObject);
     }
 });
 
@@ -1414,7 +1436,40 @@ var EditorApplication = IApplication.$extend(
     __init__ : function()
     {
         this.$super("Editor");
-        var editor = new RocketEditor("rocket");
+
+        Tundra.events.subscribe("InterfaceDesigner.Toggle", function() {
+            if (this.editor)
+                this.editor.toggleEditor();
+        }.bind(this));
+
+        Tundra.events.subscribe("InterfaceDesigner.SetEnabled", function(enabled) {
+            if (this.editor)
+                this.editor.setEnabled(enabled === true);
+        }.bind(this));
+
+        Tundra.events.subscribe("InterfaceDesigner.Start", function(enabled) {
+            this.start();
+        }.bind(this));
+
+        // Auto start in dev mode
+        if (Tundra.usingRequireJS())
+            this.start();
+    },
+
+    start : function()
+    {
+        if (this.started === true || this.editor !== undefined)
+            return;
+        this.started = true;
+
+        IApplication.loadDependencies(this,
+            "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js")
+        .done(function()
+        {
+            this.editor = new TundraEditor({
+                type: "webtundra"
+            });
+        }.bind(this));
     }
 })
 
