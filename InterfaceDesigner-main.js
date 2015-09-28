@@ -1085,7 +1085,7 @@ var IPanel = Class.$extend(
 
     onWindowResize : function(width, height)
     {
-        var container = $("body");
+        var container = IEditor.Instance.container();
         this.ui.panel.css("height", height);
 
         if (this.ui.panel.is(":visible"))
@@ -3190,6 +3190,8 @@ var IEditor = IWrapper.$extend(
 
         if (editorShortcutPressed)
         {
+            if ($("#interfacedesigner_statusmessage").length > 0)
+                $("#interfacedesigner_statusmessage").remove();
             this.toggleEditor();
             // @todo Make the wrapper impl prevent/stop propagation
             keyEvent.originalEvent.preventDefault();
@@ -3252,7 +3254,7 @@ var IEditor = IWrapper.$extend(
     {
         var panelHeight = this.height();
         var taskbar = this.taskbar();
-        var container = $("body");
+        var container = this.container();
 
         var panelsKeys = Object.keys(this.panels);
         for (var i = panelsKeys.length - 1; i >= 0; i--)

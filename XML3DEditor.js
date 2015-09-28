@@ -1235,12 +1235,12 @@ var XML3DEditor = IEditor.$extend(
         this.$super();
 
         this.panels["scenetree"].ui.addEntityButton.button("option", "label", "Add new element...");
+        this.panels["scenetree"].ui.buttonsHolder.css("height", "25px");
         this.panels["eceditor"].ui.addCompButton.button("option", "label", "Add new child element");
         this.panels["scenetree"].ui.addEntityButton.off();
         this.panels["scenetree"].ui.addEntityButton.click(this, this.onAddEntityClicked);
         this.panels["eceditor"].ui.addCompButton.off();
         this.panels["eceditor"].ui.addCompButton.click(this, this.onAddComponentClicked);
-
 
         this.panels["eceditor"].ui.panel.on("mousedown", "input", function(e)
         {

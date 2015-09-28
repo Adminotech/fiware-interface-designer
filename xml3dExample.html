@@ -7,7 +7,25 @@
     <style>
         #mainContent {
             position: absolute;
-            top: 0; right: 0; bottom: 0; left: 0;
+            top: 0;
+            left: 0;
+            padding: 0;
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        #interfacedesigner_statusmessage {
+            width: 220px;
+            height: 36px;
+            padding: 5px;
+            position: absolute;
+            border-radius: 5px;
+            top: calc(50vh - 18px);
+            left: calc(50vw - 110px);
+            background-color: lightblue;
+            font-family: monospace;
         }
     </style>
     <script type="text/javascript" src="lib/xml3d.js"></script>
@@ -34,12 +52,13 @@
                 canvas: "mainCanvas", 
                 resourcesPath: "resources/"
             });
-
+            $("#interfacedesigner_statusmessage").html("Interface designer loaded. Press 'Shift' + S to enable it");
         }, false);
     </script>
  </head>
  <body>
     <div id="mainContent">
+        <div id="interfacedesigner_statusmessage"></div>
         <xml3d xmlns="http://www.xml3d.org/2009/xml3d" id="mainCanvas" activeView="#cameraView" style="width:100%; height:100%;background-color:white;">
             <defs>
                 <transform id="cameraTransform"></transform>

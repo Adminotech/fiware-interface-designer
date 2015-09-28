@@ -1205,7 +1205,7 @@ var TundraEditor = IEditor.$extend(
 
     container : function()
     {
-        return (Tundra.usingPolymer() ? $("body") : Tundra.container);
+        return $("body");
     },
 
     /* pure virtual */
