@@ -140,15 +140,3 @@ Let's breakdown the code for better understanding.
 
 # Sanity check procedures
 As a verification that everything was installed correctly, pressing the shortcut `"Shift" + "S"` should open up the scene editor, and should be ready to use. If you use the above XML3D example, you will come across an empty scene. 
-
-# FIWARE guides
-
-* [Installation and Administration Guide](installation_administration.md)
-
-* [User and Programmer's Guide](user_programmers.md)
-
----------------------------------------------------------------------------------------------------------
-This project is part of FIWARE.
-[https://www.fiware.org/](https://www.fiware.org/)
-
-FIWARE catalogue: [Interface Designer GE](http://catalogue.fiware.org/enablers/interface-designer)
