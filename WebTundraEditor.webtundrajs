@@ -1468,6 +1468,7 @@ var EditorApplication = IApplication.$extend(
             this.editor = new TundraEditor({
                 type: "webtundra"
             });
+            this.entity.temporary = true;
         }.bind(this));
     }
 })
