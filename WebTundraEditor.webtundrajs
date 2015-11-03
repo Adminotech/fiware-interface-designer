@@ -1145,8 +1145,10 @@ var TundraEditor = IEditor.$extend(
     __init__ : function(options)
     {
         this.$super(options);
+        this.app = options.app || false;
 
-        $("head").append('<link rel="stylesheet" href="../src/application/editor/lib/skin-win8/ui.fancytree.css">');
+        var fancyTreeCssPath = this.app ? this.app.resolveRef("webtundra-applications://editor/lib/skin-win8/ui.fancytree.css") : ".application/editor/lib/skin-win8/ui.fancytree.css";
+        $("head").append('<link rel="stylesheet" href="' + fancyTreeCssPath + '">');
 
         this.meshRefs = {
             "Ball" : "http://meshmoon.data.s3.amazonaws.com/asset-library/meshes/primitives/Sphere.mesh",
@@ -1451,7 +1453,7 @@ var EditorApplication = IApplication.$extend(
         }.bind(this));
 
         // Auto start in dev mode
-        if (Tundra.usingRequireJS())
+        //if (Tundra.usingRequireJS())
             this.start();
     },
 
@@ -1466,7 +1468,8 @@ var EditorApplication = IApplication.$extend(
         .done(function()
         {
             this.editor = new TundraEditor({
-                type: "webtundra"
+                type: "webtundra",
+                app : this
             });
             this.entity.temporary = true;
         }.bind(this));
