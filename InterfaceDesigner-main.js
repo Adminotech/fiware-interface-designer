@@ -1468,10 +1468,12 @@ var ECEditorPanel = IPanel.$extend(
         this.componentEvents = [];                         // Array of EventWrapper
         this.currentObject = null;
         this.allObjects = [];
-
+        this.lastSelectedObjects = 0;
         this.noSelectionStr = options.noSelectionString || "<i>(No entities selected)</i>";     // String
         this.multiSelectionStr = options.multiSelectionStr || "<i>(Multiple entities selected)</i>";     // String
         this.fontConfig = options.fontConfig || {};
+
+        IEditor.Instance.undoStack.stateChanged(this, this.onUndoRedoStateChanged);
     },
 
     initUi : function()
@@ -1482,6 +1484,11 @@ var ECEditorPanel = IPanel.$extend(
         accordionStyle.text(".accStripe { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }\
         .accStripe .ui-accordion-header { background: blue url(http://code.jquery.com/ui/1.10.3/themes/smoothness/images/ui-bg_glass_75_e6e6e6_1x400.png) none repeat scroll 0 0; }");
         $("head").append(accordionStyle);
+
+        var listStyle = $("<style/>");
+        listStyle.text(".componentList { list-style-type: none; margin: 0; padding: 0; width: 100%; }\
+        .componentList li { margin: 0 3px 3px 3px; padding: 0.4em; padding-left: 1.5em; font-size: 1.4em; height: 18px; }");
+        $("head").append(listStyle);
 
         this.ui.entityLabel = $("<div/>");
         this.ui.entityLabel.attr("id", "editor-entity-label");
@@ -1591,7 +1598,8 @@ var ECEditorPanel = IPanel.$extend(
         this.ui.holder.attr("id", "editor-component-accordions");
         this.ui.holder.css({
             "position"   : "relative",
-            "overflow"   : "auto",
+            "overflow-x" : "hidden",
+            "overflow-y" : "auto",
             "top"        : 15,
             "left"       : 10,
             "width"      : "95%",
@@ -1622,6 +1630,15 @@ var ECEditorPanel = IPanel.$extend(
     disable : function()
     {
 
+    },
+
+    onUndoRedoStateChanged: function()
+    {
+        if (!IEditor.Instance.transformEditor)
+            return;
+
+        if (this.lastSelectedObjects != IEditor.Instance.transformEditor.targets.length)
+            this.onEntitySelected(null);
     },
 
     componentHolderHeight : function()
@@ -1718,6 +1735,55 @@ var ECEditorPanel = IPanel.$extend(
         dialog.exec();
     },
 
+    onMassAddClicked : function()
+    {
+        var targets = $(this).data("targetEntities");
+        if (isNull(targets))
+            return;
+        var targetEntityIds = targets.split('-');
+
+        var comps = [];
+        var registeredComponents = IEditor.scene.registeredComponents();
+        for (var i = 0; i < registeredComponents.length; i++)
+            comps.push({
+                name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
+                value : registeredComponents[i].TypeId
+            });
+
+        var dialog = new ModalDialog("MassAddComponent", "Add components to " + targetEntityIds.length + (targetEntityIds.length > 1 ? " entities" : " entity"), 450, 300);
+        dialog.appendComboBox("combobox-componentList", "Select component type:   ", comps);
+        dialog.appendInputBox("input-newComponentName", "Name this component (optional):", "string");
+        dialog.appendInputBox("checkbox-local", "Create local component:", "checkbox");
+        dialog.appendInputBox("checkbox-temporary", "Temporary:", "checkbox");
+
+        var buttons = {
+            "Add component" : function()
+            {
+                var inputCompName = $("#input-newComponentName");
+                var compTypeName = $("#combobox-componentList").find(":selected").text();
+                var compTypeId = $("#combobox-componentList").find(":selected").val();
+                var compName = $("#input-newComponentName").val();
+                var isLocal = $("#checkbox-local").is(":checked");
+                var isTemporary = $("#checkbox-temporary").is(":checked");
+                if (compTypeName === "Dynamic")
+                    compTypeName = "DynamicComponent";
+
+                IEditor.Instance.massAddComponentCommand(targetEntityIds, compTypeName, compName, isLocal, isTemporary);
+
+                $(this).dialog("close");
+                $(this).remove();
+            },
+            "Cancel" : function()
+            {
+                $(this).dialog("close");
+                $(this).remove();
+            }
+        };
+
+        dialog.addButtons(buttons);
+        dialog.exec();
+    },
+
     onEditButtonClicked : function()
     {
         var toggle = $(this).data("toggle");
@@ -1791,10 +1857,7 @@ var ECEditorPanel = IPanel.$extend(
         if (isNotNull(this.currentObject))
             this.saveAccordionHistory();
 
-        this.ui.holder.off();
-        this.ui.holder.empty();
-        this.ui.upButton.data("targetEntity", -1);
-        this.ui.addCompButton.data("targetEntity", -1);
+        this.clearComponentContainer();
 
         if (isNull(entityPtr))
         {
@@ -1803,6 +1866,7 @@ var ECEditorPanel = IPanel.$extend(
 
             this.ui.upButton.hide();
             this.ui.buttonsHolder.hide();
+            this.lastSelectedObjects = 0;
         }
         else if (isNotNull(entityPtr))
         {
@@ -1816,6 +1880,8 @@ var ECEditorPanel = IPanel.$extend(
                 this.ui.upButton.show();
             else
                 this.ui.upButton.hide();
+
+            this.lastSelectedObjects = 1;
         }
     },
 
@@ -1824,16 +1890,130 @@ var ECEditorPanel = IPanel.$extend(
         if (isNotNull(this.currentObject))
             this.saveAccordionHistory();
 
-        this.ui.holder.off();
-        this.ui.holder.empty();
-        this.ui.upButton.data("targetEntity", -1);
-        this.ui.addCompButton.data("targetEntity", -1);
-
+        this.clearComponentContainer();
         this.currentObject = null;
+        this.populateComponentsForEntities(IEditor.Instance.transformEditor.targets);
         this.ui.entityLabel.html(this.multiSelectionStr);
 
         this.ui.upButton.hide();
         this.ui.buttonsHolder.hide();
+        this.lastSelectedObjects = IEditor.Instance.transformEditor.targets.length;
+    },
+
+    clearComponentContainer: function()
+    {
+        this.ui.holder.off();
+        this.ui.holder.empty();
+        this.ui.upButton.data("targetEntity", -1);
+        this.ui.addCompButton.data("targetEntity", -1);
+    },
+
+    populateComponentsForEntities : function(targets)
+    {
+        var addCompButton = $("<button/>", {
+            id : "ec-add-components-button"
+        });
+        addCompButton.css({
+            "position" : "relative",
+            "font-size" : "11px",
+            "margin-bottom" : "5px",
+            "width": "100%"
+        }).css(this.fontConfig);
+        addCompButton.html("Create Components...");
+        addCompButton.button({
+            icons : {
+                primary : "ui-icon-plusthick"
+            }
+        });
+
+        var targetEntityIds = [];
+        var uiComponents = {};
+        for (var i = 0; i < targets.length; ++i)
+        {
+            var entity = targets[i].parentEntity;
+            targetEntityIds.push(entity.id);
+            var components = entity.components;
+            for (var j = 0; j < components.length; ++j)
+            {
+                var component = components[j];
+                if (!uiComponents[component.typeName])
+                    uiComponents[component.typeName] = [];
+                uiComponents[component.typeName].push(entity.id);
+            }
+        }
+
+        addCompButton.data("targetEntities", targetEntityIds.join('-'));
+
+        var uiElements = $("<ul/>", {
+            id: "componentUnsortedList",
+            class: "componentList",
+            style: "font-family: Verdana,Arial,sans-serif;"
+        });
+        var uiComponentsKeys = Object.keys(uiComponents);
+        for (var i = 0; i < uiComponentsKeys.length; ++i)
+        {
+            var key = uiComponentsKeys[i];
+            var uiElement = $("<li/>", {
+                id: "componentListItem-" + key,
+                class: "ui-state-default",
+                style: "font-size: 11px;"
+            });
+
+            var spanType = $("<span>" + key + "</span>");
+            var spanNumber = $("<span style='float:right; margin-right: 5px;'>" + uiComponents[key].length + (uiComponents[key].length > 1 ? " entities" : " entity") + "</span>");
+            uiElement.append(spanType);
+            uiElement.append(spanNumber);
+            var removeButton = $("<button/>", {
+                id : "removeComponentsButton-" + key,
+                title : "Remove all " + key
+            });
+            removeButton.data("targetEntities", uiComponents[key].join("-"));
+            removeButton.data("targetComponent", key);
+            removeButton.css("float", "right");
+            removeButton.button({
+                icons : {
+                    primary : "ui-icon-closethick"
+                },
+                text : false
+            });
+
+            removeButton.tooltip({
+                track : true
+            });
+
+            removeButton.click(function(event) {
+                event.stopPropagation();
+                event.preventDefault();
+
+                var targetEntityIds = $(this).data("targetEntities");
+                var targetComponentType = $(this).data("targetComponent");
+                if (isNotNull(targetEntityIds))
+                {
+                    var targetEntities = targetEntityIds.split("-");
+                    var confirmDialog = ModalDialog.confirmationDialog(
+                        "RemoveComponent",
+                        "Remove " + targetComponentType,
+                        "Are you sure that you want to remove " + targetComponentType + " from all currently selected entities?",
+                        function()
+                        {
+                            IEditor.Instance.massRemoveComponentCommand(targetEntities, targetComponentType);
+                            $("#componentListItem-" + targetComponentType).hide();
+                        }
+                    );
+
+                    confirmDialog.exec();
+                }
+            });
+
+            uiElement.prepend(removeButton);
+            uiElements.append(uiElement);
+        }
+
+        this.ui.holder.append(addCompButton);
+        this.ui.holder.append(uiElements);
+        uiElements.sortable();
+
+        addCompButton.click(this, this.onMassAddClicked);
     },
 
     populateComponents : function(entityPtr, activeComponent)
@@ -2739,6 +2919,7 @@ var IEditor = IWrapper.$extend(
         this.enabled = false;
         this.isECEditor = false;
         this.sceneEvents = [];
+        this.clipboard = [];
 
         /**
             Transform editor instance
@@ -2956,6 +3137,18 @@ var IEditor = IWrapper.$extend(
     addComponentCommand : function(entityId, compType, compName, isLocal, temporary) {},
 
     /**
+        Adds a "mass component create" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {Array.<any>} targetEntities The entity IDs that this component should be created
+        @param {string} compType Component type name
+        @param {string} compName Component name
+        @param {boolean} isLocal Create local component
+        @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */
+    massAddComponentCommand: function(targetEntities, compType, compName, isLocal, temporary) {},
+
+    /**
         Adds a "component remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
         Implementations should create a generic command derived from {@link ICommand} for removing a component from the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
         @param {ComponentWrapper} componentPtr The entity to be removed
@@ -2964,13 +3157,22 @@ var IEditor = IWrapper.$extend(
     removeComponentCommand : function(componentPtr) {},
 
     /**
-        Adds an "attribute add" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Adds a "mass component remove" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
         Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
-        @param {number} entityId The entity ID that this component should be created
+        @param {Array.<any>} targetEntities The entity IDs that this component should be removed
         @param {string} compType Component type name
-        @param {string} compName Component name
         @param {boolean} isLocal Create local component
         @param {boolean} temporary Mark this component as temporary
+        @virtual
+    */
+    massRemoveComponentCommand: function(targetEntities, compType) {},
+
+    /**
+        Adds an "attribute add" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for adding a component to the scene, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {ComponentWrapper} componentPtr The component pointer to which this attribute should be added
+        @param {string} attrTypeId the attribute type id
+        @param {string} attrName the attribute name
         @virtual
     */
     addAttributeCommand : function(componentPtr, attrTypeId, attrName) {},
@@ -2993,6 +3195,14 @@ var IEditor = IWrapper.$extend(
     changeAttributeCommand : function(attributePtr, value) {},
 
     /**
+        Adds a 'paste' command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for changing the attribute's value, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {Array.<Object>} objects Array of JSONs that describe the entity
+        @virtual
+    */
+    pasteCommand: function(objects) {},
+
+    /**
         Saves the scene.<br>
         Implementations should handle the saving of the scene according to the underlying system for serialization of the scene description
         @param {string} filename The desired filename without extension
@@ -3007,6 +3217,13 @@ var IEditor = IWrapper.$extend(
         @param {File} fileObject Instance of File object
     */
     load : function(fileObject) {},
+
+    /**
+        Copies the current selected entities
+        @virtual
+    */
+    copy: function() {},
+
     /**
         Initializes the transform editor. Serves to manipulate position / rotation / scale of 3D objects.<br>
         Implementations should make their own transform editors by extending {@link ITransformEditor} and all of its methods
@@ -3191,7 +3408,8 @@ var IEditor = IWrapper.$extend(
         if (editorShortcutPressed)
         {
             if ($("#interfacedesigner_statusmessage").length > 0)
-                $("#interfacedesigner_statusmessage").remove();
+                $("#interfacedesigner_statusmessage").fadeOut();
+
             this.toggleEditor();
             // @todo Make the wrapper impl prevent/stop propagation
             keyEvent.originalEvent.preventDefault();
@@ -3209,6 +3427,20 @@ var IEditor = IWrapper.$extend(
             this.undoStack.undo();
         else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("q"))
             this.undoStack.redo();
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("c"))
+        {
+            IEditor.Instance.copy();
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true;
+        }
+        else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("v"))
+        {
+            IEditor.Instance.pasteCommand(this.clipboard);
+            keyEvent.originalEvent.preventDefault();
+            keyEvent.originalEvent.stopPropagation();
+            keyEvent.suppressed = true;
+        }
     },
 
     _onMouseEvent : function(mouseEvent)
@@ -3228,13 +3460,13 @@ var IEditor = IWrapper.$extend(
                     return;
 
                 if (isNotNull(raycastResult.entity) && isNotNull(this.currentObject))
-                    if (raycastResult.entity.id == this.currentObject.id)
+                {
+                    if ((raycastResult.entity.id == this.currentObject.id) && this.transformEditor && this.transformEditor.targets.length < 2)
                         return;
+                }
 
                 if (mouseEvent.shiftPressed === true)
-                {
                     this.appendEntity(raycastResult.entity);
-                }
                 else
                     this.selectEntity(raycastResult.entity);
                 mouseEvent.suppressed = true;
@@ -3314,6 +3546,8 @@ var IEditor = IWrapper.$extend(
         else
         {
             IEditor.scene.unregisterAll();
+            if (this.transformEditor)
+                this.transformEditor.clearSelection();
 
             for (var i = 0; i < this.sceneEvents.length; i++)
                 IEditor.scene.unsubscribe(this.sceneEvents[i]);
@@ -3398,8 +3632,10 @@ var IEditor = IWrapper.$extend(
 
     appendEntity : function(entity)
     {
-        if (this.transformEditor)
-            this.transformEditor.appendTarget(entity._ptr);
+        if (!this.transformEditor)
+            return;
+
+        this.transformEditor.appendTarget(entity._ptr);
         if (this.transformEditor.targets.length > 1)
         {
             this.panels["eceditor"].onMultiSelect();

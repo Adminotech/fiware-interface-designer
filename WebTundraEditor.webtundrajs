@@ -89,7 +89,7 @@ var AddComponentCommand = ICommand.$extend(
         if (isNull(temporary))
             temporary = false;
 
-        var commandLabel = "+add component of type " + compType;
+        var commandLabel = "+add component " + compType;
         if (compName !== "")
             commandLabel += " named " + compName;
 
@@ -435,6 +435,186 @@ var TransformCommand = ICommand.$extend(
     undo : function()
     {
         this.set(this.oldValue);
+    }
+});
+
+var PasteCommand = ICommand.$extend(
+{
+    __init__: function(objects)
+    {
+        this.$super("+Paste " + objects.length + (objects.length > 1 ? " entity" : " entities"));
+        this.objects = objects;
+        this.pasted = [];
+    },
+
+    exec: function()
+    {
+        if (this.objects.length > 0)
+        {
+            for (var i = 0; i < this.objects.length; ++i)
+            {
+                var object = this.objects[i];
+                var entity = Tundra.scene.createEntity(0);
+                entity.sync = object.sync;
+                entity.temp = object.temp;
+                entity.deserializeFromObject(object);
+
+                this.pasted.push(entity.serializeToObject(true));
+            }
+
+            this.objects.length = 0;
+        }
+        else if (this.pasted.length > 0)
+        {
+            for (var i = 0; i < this.pasted.length; ++i)
+            {
+                var object = this.pasted[i];
+                var entity = Tundra.scene.createEntity(object.id);
+                entity.sync = object.sync;
+                entity.temp = object.temp;
+                entity.deserializeFromObject(object);
+            }            
+        }
+    },
+
+    undo: function()
+    {
+        for (var i = 0; i < this.pasted.length; ++i)
+            Tundra.scene.removeEntity(this.pasted[i].id);
+    }
+});
+
+var MassAddComponentCommand = ICommand.$extend(
+{
+    __init__ : function(targetEntities, compType, compName, isLocal, temporary)
+    {
+        this.$super("+add " + compType + " to " + targetEntities.length + (targetEntities.length > 1 ? " entities" : " entity"));
+
+        if (isNull(compName))
+            compName = "";
+        if (isNull(isLocal))
+            isLocal = false;
+        if (isNull(temporary))
+            temporary = false;
+
+        var commandLabel = "+add components " + compType;
+        if (compName !== "")
+            commandLabel += " named " + compName;
+        commandLabel += " to " + targetEntities.length + (targetEntities.length > 1 ? " entities" : " entity");
+
+        this.$super(commandLabel);
+
+        this.targets = targetEntities;
+        this.compName = compName;
+        this.compType = compType;
+        this.isLocal = isLocal;
+        this.temporary = temporary;
+        this.compIds = {};
+    },
+
+    exec: function()
+    {
+        for (var i = 0; i < this.targets.length; ++i)
+        {
+            var entityId = parseInt(this.targets[i]);
+            var entity = Tundra.scene.entityById(entityId);
+            if (entity)
+            {
+                var comp = null;
+                if (!this.isLocal)
+                    comp = entity.createComponent(this.compType, this.compName);
+                else
+                    comp = entity.createLocalComponent(this.compType, this.compName);
+                if (comp)
+                {
+                    comp.temporary = this.temporary;
+                    this.compIds[entityId] = comp.id;
+                }
+            }
+        }
+    },
+
+    undo: function()
+    {
+        var keys = Object.keys(this.compIds);
+        for (var i = 0; i < keys.length; ++i)
+        {
+            var entId = parseInt(keys[i]);
+            var compId = this.compIds[entId];
+            var entity = Tundra.scene.entityById(entId);
+            if (entity)
+                entity.removeComponent(compId);
+        }
+
+        this.compIds = {};
+    }
+});
+
+var MassRemoveComponentCommand = ICommand.$extend(
+{
+    __init__ : function(targetEntities, compType)
+    {
+        this.$super("-remove " + compType + " from " + targetEntities.length + (targetEntities.length > 1 ? " entities" : " entity"));
+        this.targets = targetEntities;
+        this.type = compType;
+        this.targetToComponents = {};
+    },
+
+    exec: function()
+    {
+        for (var i = 0; i < this.targets.length; ++i)
+        {
+            var entityId = parseInt(this.targets[i]);
+            if (this.targetToComponents[entityId])
+                continue;
+
+            var entity = Tundra.scene.entityById(entityId);
+            if (entity)
+            {
+                var comps = entity.getComponents(this.type);
+                if (comps.length < 1)
+                    continue;
+
+                this.targetToComponents[entityId] = [];
+                for (var j = 0; j < comps.length; ++j)
+                {
+                    this.targetToComponents[entityId].push(comps[j].serializeToObject(true));
+                    entity.removeComponent(comps[j].id);
+                }
+            }
+        }
+
+        if ($("#componentListItem-" + this.type).length > 0)
+            $("#componentListItem-" + this.type).hide();
+    },
+
+    undo: function()
+    {
+        var keys = Object.keys(this.targetToComponents);
+        for (var i = 0; i < keys.length; ++i)
+        {
+            var key = keys[i];
+            var entity = Tundra.scene.entityById(parseInt(key));
+            if (entity)
+            {
+                for (var j = 0; j < this.targetToComponents[key].length; ++j)
+                {
+                    var comp = this.targetToComponents[key][j];
+                    var compPtr = null;
+                    if (comp.sync)
+                        compPtr = entity.createComponent(comp.typeName, comp.name);
+                    else
+                        compPtr = entity.createLocalComponent(comp.typeName, comp.name);
+                    compPtr.temporary = comp.temp;
+                    compPtr.deserializeFromObject(comp);
+                }
+            }
+        }
+
+        this.targetToComponents = {};
+
+        if ($("#componentListItem-" + this.type).length > 0)
+            $("#componentListItem-" + this.type).show();
     }
 });
 
@@ -1379,9 +1559,19 @@ var TundraEditor = IEditor.$extend(
         this.undoStack.pushAndExec(new AddComponentCommand(TundraEditor.scene, entityId, compType, compName, isLocal, temporary));
     },
 
+    massAddComponentCommand: function(targetEntities, compType, name, isLocal, temporary)
+    {
+        this.undoStack.pushAndExec(new MassAddComponentCommand(targetEntities, compType, name, isLocal, temporary));
+    },
+
     removeComponentCommand : function(componentPtr)
     {
         this.undoStack.pushAndExec(new RemoveComponentCommand(TundraEditor.scene, componentPtr));
+    },
+
+    massRemoveComponentCommand: function(targetEntities, compType)
+    {
+        this.undoStack.pushAndExec(new MassRemoveComponentCommand(targetEntities, compType));
     },
 
     addAttributeCommand : function(componentPtr, attrTypeId, attrName)
@@ -1409,6 +1599,14 @@ var TundraEditor = IEditor.$extend(
         this.undoStack.pushCommand(new MultiTransformCommand(states));
     },
 
+    pasteCommand: function(clipboard)
+    {
+        if (!clipboard || clipboard.length < 1)
+            return;
+
+        this.undoStack.pushAndExec(new PasteCommand(clipboard));
+    },
+
     save : function(filename)
     {
         var sceneTxml = Tundra.scene.serializeToXml();
@@ -1428,6 +1626,16 @@ var TundraEditor = IEditor.$extend(
             Tundra.scene.deserializeFromXml(xmlDoc);
         });
         reader.readAsText(fileObject);
+    },
+
+    copy: function()
+    {
+        var entities = [];
+        for (var i = 0; i < this.transformEditor.targets.length; ++i)
+            entities.push(this.transformEditor.targets[i].parentEntity.serializeToObject(true));
+
+        console.log(entities);
+        this.clipboard = entities;
     }
 });
 
