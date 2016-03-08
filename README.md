@@ -1,3 +1,11 @@
+Interface Designer
+===================
+
+[![License badge](https://img.shields.io/hexpm/l/plug.svg)](http://www.apache.org/licenses/LICENSE-2.0)
+[![Documentation badge](https://readthedocs.org/projects/interface-designer/badge/?version=latest)](http://interface-designer.readthedocs.org/en/latest/?badge=latest)
+[![Docker badge](https://img.shields.io/docker/pulls/adminotech/interfacedesigner.svg)](https://hub.docker.com/r/adminotech/interfacedesigner/)
+[![Support badge]( https://img.shields.io/badge/support-sof-yellowgreen.svg)](mailto:support@meshmoon.com)
+
 # Introduction 
 This document describes the installation and administration of the Interface Designer GE.
 
