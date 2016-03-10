@@ -6,7 +6,7 @@ Interface Designer
 [![Docker badge](https://img.shields.io/docker/pulls/adminotech/interfacedesigner.svg)](https://hub.docker.com/r/adminotech/interfacedesigner/)
 [![Support badge]( https://img.shields.io/badge/support-sof-yellowgreen.svg)](mailto:support@meshmoon.com)
 
-# Introduction 
+# Introduction
 This document describes the installation and administration of the Interface Designer GE.
 
 # System Requirements
@@ -94,7 +94,7 @@ Let's breakdown the code for better understanding.
     	<script type="text/javascript" src="lib/xml3d.js"></script>
     	<script type="text/javascript" src="lib/xml3d.tools.js"></script>
     	<script type="text/javascript" src="lib/jquery.js"></script>
-    	<script type="text/javascript" src="lib/jquery-ui.js"></script> 
+    	<script type="text/javascript" src="lib/jquery-ui.js"></script>
     	<script type="text/javascript" src="lib/jquery.fancytree-all.min.js"></script>
     	<script type="text/javascript" src="lib/jquery.ui-contextmenu.min.js"></script>
     	<script type="text/javascript" src="lib/FileSaver.min.js"></script>
@@ -115,8 +115,8 @@ Let's breakdown the code for better understanding.
         	    camera.attach();
         	    // XML3D editor instance
         	    var editor = new XML3DEditor({
-        	        mainContent: "mainContent", 
-        	        canvas: "mainCanvas", 
+        	        mainContent: "mainContent",
+        	        canvas: "mainCanvas",
         	        resourcesPath: "resources/"
         	    });
         	}, false);
@@ -126,8 +126,8 @@ Let's breakdown the code for better understanding.
 * In the 'load' event, an instance of `XML3DEditor` is made that accepts an options JSON: `mainContent` is the variable that will hold the ID of the main `<div>` element, `canvas` holds the ID of the main `<xml3d>` element, and `resourcesPath` the path to the `resources` folder that comes with the package.
 
         var editor = new XML3DEditor({
-            mainContent: "mainContent", 
-            canvas: "mainCanvas", 
+            mainContent: "mainContent",
+            canvas: "mainCanvas",
             resourcesPath: "resources/"
         });
 
@@ -147,13 +147,13 @@ Let's breakdown the code for better understanding.
     	</body>
 
 # Sanity check procedures
-As a verification that everything was installed correctly, pressing the shortcut `"Shift" + "S"` should open up the scene editor, and should be ready to use. If you use the above XML3D example, you will come across an empty scene. 
+As a verification that everything was installed correctly, pressing the shortcut `"Shift" + "S"` should open up the scene editor, and should be ready to use. If you use the above XML3D example, you will come across an empty scene.
 
 # FIWARE guides
 
-* [Installation and Administration Guide](installation_administration.md)
+* [Installation and Administration Guide](doc/installation_administration.md)
 
-* [User and Programmer's Guide](user_programmers.md)
+* [User and Programmer's Guide](doc/user_programmers.md)
 
 ---------------------------------------------------------------------------------------------------------
 This project is part of FIWARE.
