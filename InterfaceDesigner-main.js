@@ -1197,9 +1197,20 @@ var SceneTreePanel = IPanel.$extend(
         this.ui.holder.fancytree({
             icons : false,
             selectMode : 2,
-            select : function(event, data) {
-                console.log(this, event, data);
-            }
+            /*
+            click: function(event, data) {
+                if (data.targetType !== "title" || data.node.parent.title !== "root")
+                    return;
+
+                data.node.toggleSelected();
+            },
+            */
+            dblclick: function(event, data)
+            {
+                event.preventDefault();
+                event.stopPropagation();
+                this._selectEntity(event.toElement);
+            }.bind(this)
         });
 
         var rootNode = this.ui.holder.fancytree("getRootNode");
@@ -1331,25 +1342,28 @@ var SceneTreePanel = IPanel.$extend(
             node.remove();
     },
 
+    _selectEntity: function(element)
+    {
+        var node = $.ui.fancytree.getNode(element);
+        var target = node.key.split("-");
+
+        var entityId = -1;
+        var componentId = -1;
+        if (target.length >= 2)
+            entityId = parseInt(target[1]);
+        if (target.length >= 3)
+            componentId = parseInt(target[2]);
+
+        var entity = IEditor.scene.entityById(entityId);
+        if (isNotNull(entity))
+            IEditor.Instance.selectEntity(entity, componentId);
+    },
+
     onContextMenuItemSelected : function(event, ui)
     {
         var element = ui.target[0];
         if (ui.cmd === "edit")
-        {
-            var node = $.ui.fancytree.getNode(element);
-            var target = node.key.split("-");
-
-            var entityId = -1;
-            var componentId = -1;
-            if (target.length >= 2)
-                entityId = parseInt(target[1]);
-            if (target.length >= 3)
-                componentId = parseInt(target[2]);
-
-            var entity = IEditor.scene.entityById(entityId);
-            if (isNotNull(entity))
-                IEditor.Instance.selectEntity(entity, componentId);
-        }
+            this._selectEntity(element);
         else if (ui.cmd === "delete")
         {
             var node = $.ui.fancytree.getNode(element);
@@ -2064,6 +2078,8 @@ var ECEditorPanel = IPanel.$extend(
             canBeRemoved = true;
         var entAndCompSuffix = componentPtr.parentId() + "-" + componentPtr.id;
 
+        var properties = this._buildProperties(componentPtr._ptr.properties);
+
         var accordionId = "accordion-" + entAndCompSuffix;
         var accordion = $("<div/>", {
             id : accordionId
@@ -2100,6 +2116,26 @@ var ECEditorPanel = IPanel.$extend(
             },
             text : false
         });
+
+        var actionsButton = null;
+        if (IEditor.Instance.hasActions(componentPtr.typeName))
+        {
+            var actionsButtonId = "actionsButton-" + componentPtr.id;
+            actionsButton = $("<button/>", {
+                id: actionsButtonId,
+                title: "Actions..."
+            });
+
+            actionsButton.data("parentAccordion", accordionId);
+            actionsButton.data("componentType", componentPtr.typeName);
+            actionsButton.css("float", "right");
+            actionsButton.button({
+                icons : {
+                    primary : "ui-icon-grip-dotted-horizontal"
+                },
+                text : false
+            });
+        }
 
         var editButton = null;
         if (IEditor.Instance.type === "xml3d")
@@ -2156,6 +2192,11 @@ var ECEditorPanel = IPanel.$extend(
                     table.append(tableRow);
             }
 
+            if (!$.isEmptyObject(properties))
+            {
+                var propertiesBody = this.createRowsForProperties(componentPtr, properties);
+                table.append(propertiesBody);
+            }
             content.append(table);
         }
         // else
@@ -2176,6 +2217,10 @@ var ECEditorPanel = IPanel.$extend(
         if (componentPtr.isDynamic())
             header.append(addAttrButton);
 
+        if (isNotNull(actionsButton))
+        {
+            header.append(actionsButton);
+        }
         contentHolder.append(header);
         contentHolder.append(content);
 
@@ -2197,6 +2242,10 @@ var ECEditorPanel = IPanel.$extend(
         });
         if (isNotNull(editButton))
             editButton.tooltip({
+                track : true
+            });
+        if (isNotNull(actionsButton))
+            actionsButton.tooltip({
                 track : true
             });
 
@@ -2297,6 +2346,61 @@ var ECEditorPanel = IPanel.$extend(
                 if (isNotNull(entityPtr))
                     IEditor.Instance.selectEntity(entityPtr);
             });
+
+        if (isNotNull(actionsButton))
+        {
+            actionsButton.click( function(event)
+            {
+                event.stopPropagation();
+                event.preventDefault();
+
+                var accordionId = $(this).data("parentAccordion");
+                if (isNull(accordionId))
+                    return;
+
+                var entityId = parseInt(accordionId.split("-")[1]);
+                var componentId = parseInt(accordionId.split("-")[2]);
+                var entityPtr = IEditor.scene.entityById(entityId);
+                if (isNull(entityPtr))
+                    return;
+
+                var componentPtr = entityPtr.componentById(componentId);
+
+                var dialog = new ModalDialog("ComponentActions", "Component actions", 550, 300);
+                var compType = componentPtr.typeName;
+                var actions = IEditor.Instance.actionsForComponent(compType);
+                var actionKeys = Object.keys(actions);
+                var actionsCombos = [];
+                for (var i = 0; i < actionKeys.length; ++i)
+                {
+                    var action = actions[actionKeys[i]];
+                    actionsCombos.push({
+                        name: action.name,
+                        value: action.name
+                    });
+                }
+
+                dialog.appendComboBox("combobox-Actions", "Select an action from the menu", actionsCombos);
+                var label = dialog.appendLabel("Return value: ", "label-Actions");
+                var buttons = {
+                    "Execute" : function()
+                    {
+                        var functionName = $("#combobox-Actions").find(":selected").val();
+                        var returnValue = componentPtr._ptr[functionName].call(componentPtr._ptr);
+                        label.html("Return value: " + returnValue);
+                    },
+                    "Close" : function()
+                    {
+                        $(this).dialog("close");
+                        $(this).remove();
+                    }
+                };
+
+                dialog.addButtons(buttons);
+                dialog.exec();
+
+            });
+        }
     },
 
     createRowsForAttribute : function (entityId, componentId, attrName, attributePtr)
@@ -2514,6 +2618,75 @@ var ECEditorPanel = IPanel.$extend(
         return tableBody;
     },
 
+    createRowsForProperties: function(componentPtr, properties)
+    {
+        var entityId = componentPtr.parentId();
+        var componentId = componentPtr.id;
+        var idOfElements = entityId + "-" + componentId + "-properties";
+        var tableBody = $("<tbody/>", {
+            id : "tableBody-" + idOfElements
+        });
+        var props = componentPtr._ptr.properties;
+
+        var keys = Object.keys(properties);
+        for (var i = 0; i < keys.length; ++i)
+        {
+            var key = keys[i];
+            var propertyType = properties[key];
+            var propertyPath = key.split(".");
+            var value = props[propertyPath[0]];
+
+            for (var j = 1; j < propertyPath.length; ++j)
+                value = value[propertyPath[j]];
+
+            var row = this._rowForProperty(componentPtr, key, propertyType, value);
+            tableBody.append(row);
+        }
+
+        return tableBody;
+    },
+
+    _rowForProperty: function(componentPtr, path, type, value)
+    {
+        var row = $("<tr/>").css(Utils.attributeTableRowStyle);
+        var label = $("<td colspan='2'/>").css(Utils.attributeTableColumnStyle);
+        var element = $("<td/>").css(Utils.attributeTableColumnStyle);
+        label.html(path);
+
+        var inputType = "input";
+        switch(type)
+        {
+            case "boolean":
+                inputType = "checkbox";
+                break;
+            case "number":
+                inputType = "number";
+                break;
+        }
+
+        var inputElem = $("<input/>", {
+            id : path,
+            type : inputType,
+            step : "0.01",
+            value : value
+        });
+
+        inputElem.data("attrData", {
+            parentCompId : componentPtr.id,
+            parentEntityId : componentPtr.parentId(),
+            type: type,
+            path: path
+        });
+
+        element.append(inputElem);
+        row.append(label);
+        row.append(element);
+
+        return row;
+    },
+
+
+
     createArrayRow : function(attributePtr, attributeValue, arrayIndex)
     {
         var entityId = attributePtr.owner.parentId();
@@ -2629,6 +2802,7 @@ var ECEditorPanel = IPanel.$extend(
         var finalValue = null;
 
         var name = data.name;
+        var path = data.path;
         var type = data.type;
         var typeId = data.typeId;
         var entId = data.parentEntityId;
@@ -2641,6 +2815,12 @@ var ECEditorPanel = IPanel.$extend(
         var component = entity.componentById(compId);
         if (isNull(component))
             return;
+
+        if (!name && !!path)
+        {
+            IEditor.Instance.changePropertyCommand(component, path, type, value);
+            return;
+        }
 
         var attribute = component.attributeByName(name);
         if (isNull(attribute))
@@ -2818,6 +2998,27 @@ var ECEditorPanel = IPanel.$extend(
 
             arrayTableBody.data("arrayLength", arrayLength);
         }
+    },
+
+    _buildProperties: function(propertiesObj, res, path)
+    {
+        if (!propertiesObj)
+            return;
+
+        path = path || "";
+        res = res || {};
+        var keys = Object.getOwnPropertyNames(propertiesObj);
+        for (var i = 0; i < keys.length; ++i)
+        {
+            var key = keys[i];
+            var obj = propertiesObj[key];
+            if (typeof obj === "object")
+                this._buildProperties(obj, res, path + key + ".");
+            else
+                res[path + key] = typeof obj;
+        }
+
+        return res;
     },
 
     saveAccordionHistory : function()
@@ -3195,6 +3396,14 @@ var IEditor = IWrapper.$extend(
     changeAttributeCommand : function(attributePtr, value) {},
 
     /**
+        Adds an "property change" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for changing the attribute's value, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @param {AttributeWrapper} attributePtr The attribute to be changed
+        @param {*} value The new value to be set
+        @virtual
+    */
+    changePropertyCommand : function(component, path, type, value) {},
+    /**
         Adds a 'paste' command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
         Implementations should create a generic command derived from {@link ICommand} for changing the attribute's value, and adding that command to the undo manager instance {@link IEditor#undoStack}
         @param {Array.<Object>} objects Array of JSONs that describe the entity
@@ -3284,6 +3493,16 @@ var IEditor = IWrapper.$extend(
         Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
     */
     hideAxes : function() {},
+
+    hasActions: function(type)
+    {
+        return false
+    },
+
+    actionsForComponent: function(compTypeName)
+    {
+        return undefined;
+    },
 
     /**
         Quickly creates an entity with given type. Adds a command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>

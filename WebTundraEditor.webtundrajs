@@ -315,6 +315,85 @@ var AttributeChangeCommand = ICommand.$extend(
     },
 });
 
+var PropertyChangeCommand = ICommand.$extend(
+{
+    __init__ : function(scenePtr, componentPtr, path, type, value)
+    {
+        this.$super("* property change");
+        this.scenePtr = scenePtr;
+        this.entityId = componentPtr.parentId();
+        this.compId = componentPtr.id;
+        this.path = path.split(".");
+        this.type = type;
+        this.newValue = value;
+    },
+
+    setProperty: function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var compPtr = entityPtr.componentById(this.compId);
+        if (isNull(compPtr))
+            return;
+
+        var i = 0;
+        var property = compPtr._ptr.properties;
+        for (i = 0; i < this.path.length - 1; ++i)
+            property = property[this.path[i]];
+
+        this.oldValue = property[this.path[i]];
+
+        switch(this.type)
+        {
+            case "number":
+            {
+                property[this.path[i]] = parseFloat(this.newValue);
+                break;
+            }
+            case "boolean":
+            {
+                property[this.path[i]] = (this.newValue === "true");
+                break;
+            }
+            default:
+            {
+                property[this.path[i]] = this.newValue;
+                break;
+            }
+        }
+    },
+
+    unsetProperty: function()
+    {
+        var entityPtr = this.scenePtr.entityById(this.entityId);
+        if (isNull(entityPtr))
+            return;
+
+        var compPtr = entityPtr.componentById(this.compId);
+        if (isNull(compPtr))
+            return;
+
+        var i = 0;
+        var property = compPtr._ptr.properties;
+        for (i = 0; i < this.path.length - 1; ++i)
+            property = property[this.path[i]];
+
+        property[this.path[i]] = this.oldValue;
+    },
+
+    exec: function()
+    {
+        this.setProperty();
+    },
+
+    undo: function()
+    {
+        this.unsetProperty();
+    }
+});
+
 var MultiTransformCommand = ICommand.$extend(
 {
     __init__ : function(states)
@@ -473,7 +552,7 @@ var PasteCommand = ICommand.$extend(
                 entity.sync = object.sync;
                 entity.temp = object.temp;
                 entity.deserializeFromObject(object);
-            }            
+            }
         }
     },
 
@@ -1340,6 +1419,80 @@ var TundraEditor = IEditor.$extend(
         this.axisHelper = new THREE.AxisHelper(100);
         this.gridHelper = new THREE.GridHelper(100,5);
         this.gridHelper.setColors(new THREE.Color(0xFF0000), new THREE.Color(0x000000));
+
+        this.actions =
+        {
+/*
+            placeable:
+            [
+                {
+                    name: 'lookAt',
+                    arguments: [
+                        {
+                            name: 'x',
+                            type: 'number',
+                            optional : false
+                        },
+                        {
+                            name: 'y',
+                            type: 'number',
+                            optional : false
+                        },
+                        {
+                            name: 'z',
+                            type: 'number',
+                            optional : false
+                        }
+                    ]
+                }
+            ],
+
+            camera:
+            [
+                {
+                    name: 'isPointInView',
+                    arguments: [
+                        {
+                            name: 'x',
+                            type: 'number',
+                            optional : false
+                        },
+                        {
+                            name: 'y',
+                            type: 'number',
+                            optional : false
+                        },
+                        {
+                            name: 'z',
+                            type: 'number',
+                            optional : false
+                        }
+                    ],
+                    returns: 'boolean'
+                }
+            ],
+*/
+            sound:
+            [
+                {
+                    name: 'play'
+                },
+                {
+                    name: 'stop'
+                },
+                {
+                    name: 'pause'
+                }
+            ],
+
+            animationcontroller:
+            [
+                {
+                    name: 'getAvailableAnimations',
+                    returns: 'Array'
+                }
+            ]
+        }
     },
 
     /* virtual */
@@ -1544,6 +1697,19 @@ var TundraEditor = IEditor.$extend(
         Tundra.renderer.scene.remove(this.axisHelper);
     },
 
+    hasActions: function(compTypeName)
+    {
+        return (!!this.actions[compTypeName.toLowerCase()]);
+    },
+
+    actionsForComponent: function(compTypeName)
+    {
+        if (this.hasActions(compTypeName))
+            return this.actions[compTypeName.toLowerCase()];
+
+        return undefined;
+    },
+
     addEntityCommand : function(components, entityName, replicated)
     {
         this.undoStack.pushAndExec(new AddEntityCommand(TundraEditor.scene, components, entityName, replicated));
@@ -1592,6 +1758,11 @@ var TundraEditor = IEditor.$extend(
     changeAttributeCommand : function(attributePtr, newValue)
     {
         this.undoStack.pushAndExec(new AttributeChangeCommand(TundraEditor.scene, attributePtr, newValue));
+    },
+
+    changePropertyCommand : function(component, path, type, value)
+    {
+        this.undoStack.pushAndExec(new PropertyChangeCommand(TundraEditor.scene, component, path, type, value));
     },
 
     multiTransformCommand : function(states)
