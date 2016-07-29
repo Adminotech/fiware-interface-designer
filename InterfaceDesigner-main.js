@@ -118,8 +118,12 @@ var IWrapper = Class.$extend(
     */
     unregisterAll : function()
     {
-        for (var i in this.callbacks)
-            this.callbacks[i].length = 0;
+        var callbackKeys = Object.keys(this.callbacks);
+        for (var i = 0, len = callbackKeys.length; i < len; ++i)
+        {
+            var key = callbackKeys[i];
+            this.callbacks[key].length = 0;
+        }
 
         this.callbacks = {};
     },
@@ -139,7 +143,7 @@ var IWrapper = Class.$extend(
             return;
 
         var args = [].slice.call(arguments, 1);
-        for (var i = 0; i < allRegistered.length; i++)
+        for (var i = 0, len = allRegistered.length; i < len; i++)
         {
             var context = allRegistered[i].context;
             var callback = allRegistered[i].callback;
@@ -1197,14 +1201,7 @@ var SceneTreePanel = IPanel.$extend(
         this.ui.holder.fancytree({
             icons : false,
             selectMode : 2,
-            /*
-            click: function(event, data) {
-                if (data.targetType !== "title" || data.node.parent.title !== "root")
-                    return;
-
-                data.node.toggleSelected();
-            },
-            */
+            source: this.buildSourceForTree(entities),
             dblclick: function(event, data)
             {
                 event.preventDefault();
@@ -1212,13 +1209,35 @@ var SceneTreePanel = IPanel.$extend(
                 this._selectEntity(event.toElement);
             }.bind(this)
         });
+    },
 
-        var rootNode = this.ui.holder.fancytree("getRootNode");
-        for (var i = 0; i < entities.length; i++)
+    buildSourceForTree: function(entities)
+    {
+        var source = [];
+        for (var i = 0, eLen = entities.length; i < eLen; ++i)
         {
-            var entity = entities[i];
-            this.createTreeItemForEntity(entity, rootNode);
+            var entityPtr = entities[i];
+            var entityEntry = {
+                title : IEditor.Instance.getNodeTitleForEntity(entityPtr),
+                key : "sceneNode-" + entityPtr.id,
+                children: []
+            };
+
+            var components = entityPtr.components();
+            for (var j = 0, cLen = components.length; j < cLen; ++j)
+            {
+                var componentPtr = components[j];
+                var fullName = IEditor.Instance.getNodeTitleForComponent(componentPtr);
+                entityEntry.children.push({
+                    title : fullName,
+                    key : "sceneNode-" + componentPtr.parentId() + "-" + componentPtr.id
+                });
+            }
+
+            source.push(entityEntry);
         }
+
+        return source;
     },
 
     enable : function()
@@ -1277,7 +1296,7 @@ var SceneTreePanel = IPanel.$extend(
         });
 
         var components = entityPtr.components();
-        for (var i = 0; i < components.length; i++)
+        for (var i = 0, len = components.length; i < len; i++)
             this.createTreeItemForComponent(components[i], childNode);
     },
 
@@ -1424,7 +1443,7 @@ var SceneTreePanel = IPanel.$extend(
             {
                 var componentNames = [];
                 var droppedComponents = $(this).find("div[id^='dropped-']");
-                for (var i = 0; i < droppedComponents.length; i++)
+                for (var i = 0, len = droppedComponents.length; i < len; i++)
                     componentNames.push($(droppedComponents[i]).data("dropData"));
 
                 var entityName = $("#" + inputNewEntityId).val();
@@ -1448,7 +1467,7 @@ var SceneTreePanel = IPanel.$extend(
         var componentNames = [];
         var registeredComponents = IEditor.scene.registeredComponents();
 
-        for (var i = 0; i < registeredComponents.length; i++)
+        for (var i = 0, len = registeredComponents.length; i < len; i++)
             componentNames.push(registeredComponents[i].TypeName);
 
         dialog.appendDraggableList("draggableList-components", "Registered components", componentNames);
@@ -1701,7 +1720,7 @@ var ECEditorPanel = IPanel.$extend(
 
         var comps = [];
         var registeredComponents = IEditor.scene.registeredComponents();
-        for (var i = 0; i < registeredComponents.length; i++)
+        for (var i = 0, len = registeredComponents.length; i < len; i++)
             comps.push({
                 name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
                 value : registeredComponents[i].TypeId
@@ -1758,7 +1777,7 @@ var ECEditorPanel = IPanel.$extend(
 
         var comps = [];
         var registeredComponents = IEditor.scene.registeredComponents();
-        for (var i = 0; i < registeredComponents.length; i++)
+        for (var i = 0, len = registeredComponents.length; i < len; i++)
             comps.push({
                 name : IEditor.scene.componentNameInHumanFormat(registeredComponents[i].TypeName),
                 value : registeredComponents[i].TypeId
@@ -1852,7 +1871,7 @@ var ECEditorPanel = IPanel.$extend(
             return;
 
         var newToggle = false;
-        for (var i = 0; i < accordions.length; i++)
+        for (var i = 0, len = accordions.length; i < len; i++)
         {
             var isActive = $(accordions[i]).accordion("option", "active");
             if (isActive === false)
@@ -1862,7 +1881,7 @@ var ECEditorPanel = IPanel.$extend(
             }
         }
 
-        for (var i = 0; i < accordions.length; i++)
+        for (var i = 0, len = accordions.length; i < len; i++)
             $(accordions[i]).accordion("option", "active", newToggle ? 0 : false);
     },
 
@@ -1942,12 +1961,12 @@ var ECEditorPanel = IPanel.$extend(
 
         var targetEntityIds = [];
         var uiComponents = {};
-        for (var i = 0; i < targets.length; ++i)
+        for (var i = 0, tLen = targets.length; i < tLen; ++i)
         {
             var entity = targets[i].parentEntity;
             targetEntityIds.push(entity.id);
             var components = entity.components;
-            for (var j = 0; j < components.length; ++j)
+            for (var j = 0, cLen = components.length; j < cLen; ++j)
             {
                 var component = components[j];
                 if (!uiComponents[component.typeName])
@@ -1964,7 +1983,7 @@ var ECEditorPanel = IPanel.$extend(
             style: "font-family: Verdana,Arial,sans-serif;"
         });
         var uiComponentsKeys = Object.keys(uiComponents);
-        for (var i = 0; i < uiComponentsKeys.length; ++i)
+        for (var i = 0, len = uiComponentsKeys.length; i < len; ++i)
         {
             var key = uiComponentsKeys[i];
             var uiElement = $("<li/>", {
@@ -2043,7 +2062,7 @@ var ECEditorPanel = IPanel.$extend(
             this.appendAccordionForComponent(entityPtr, true, false);
 
         var accordionHistory = this.getAccordionHistory(entityPtr.id);
-        for (var i = 0; i < components.length; ++i)
+        for (var i = 0, len = components.length; i < len; ++i)
         {
             var compId = parseInt(components[i].id);
             var compHistoryIndex = accordionHistory.indexOf(compId);
@@ -2185,7 +2204,7 @@ var ECEditorPanel = IPanel.$extend(
                 parentEntityId : componentPtr.parentId()
             });
 
-            for (var attr = 0; attr < attributes.length; attr++)
+            for (var attr = 0, len = attributes.length; attr < len; attr++)
             {
                 var tableRow = this.createRowsForAttribute(componentPtr.parentId(), componentPtr.id, attributes[attr].name, attributes[attr]);
                 if (tableRow != null)
@@ -2257,7 +2276,7 @@ var ECEditorPanel = IPanel.$extend(
             var attrs = new Array();
             var dialog = new ModalDialog("addAttribute", "Add new attribute", 450, 250);
             var attributeIds = IEditor.scene.attributeTypeIds();
-            for (var i = 0; i < attributeIds.length; i++)
+            for (var i = 0, len = attributeIds.length; i < len; i++)
                 attrs.push({
                     name : IEditor.scene.attributeTypeToName(attributeIds[i]),
                     value : attributeIds[i]
@@ -2371,7 +2390,7 @@ var ECEditorPanel = IPanel.$extend(
                 var actions = IEditor.Instance.actionsForComponent(compType);
                 var actionKeys = Object.keys(actions);
                 var actionsCombos = [];
-                for (var i = 0; i < actionKeys.length; ++i)
+                for (var i = 0, len = actionKeys.length; i < len; ++i)
                 {
                     var action = actions[actionKeys[i]];
                     actionsCombos.push({
@@ -2577,7 +2596,7 @@ var ECEditorPanel = IPanel.$extend(
         }
         else if (IEditor.scene.isAttributeArray(attributeTypeId))
         {
-            for (var i = 0; i <= attributeValue.length; i++)
+            for (var i = 0, len = attributeValue.length; i <= len; i++)
             {
                 var arrayRow = this.createArrayRow(attributePtr, attributeValue, i);
                 tableBody.append(arrayRow);
@@ -2601,7 +2620,7 @@ var ECEditorPanel = IPanel.$extend(
                     parentEntityId : entityId,
                 });
 
-                for (var i = 0; i < values.length; i++)
+                for (var i = 0, len = values.length; i < len; i++)
                 {
                     var option = $("<option/>", {
                         value : values[i]
@@ -2629,14 +2648,14 @@ var ECEditorPanel = IPanel.$extend(
         var props = componentPtr._ptr.properties;
 
         var keys = Object.keys(properties);
-        for (var i = 0; i < keys.length; ++i)
+        for (var i = 0, len = keys.length; i < len; ++i)
         {
             var key = keys[i];
             var propertyType = properties[key];
             var propertyPath = key.split(".");
             var value = props[propertyPath[0]];
 
-            for (var j = 1; j < propertyPath.length; ++j)
+            for (var j = 1, jLen = propertyPath.length; j < jLen; ++j)
                 value = value[propertyPath[j]];
 
             var row = this._rowForProperty(componentPtr, key, propertyType, value);
@@ -2935,7 +2954,7 @@ var ECEditorPanel = IPanel.$extend(
             if (typeof(attributeValue) === "string")
             {
                 var attrValue = attributeValue.split(" ");
-                for (var i = 0; i < attrValue.length; i++)
+                for (var i = 0, len = attrValue.length; i < len; i++)
                 {
                     var value = attrValue[i];
                     var extElementName = elementName + "-" + xyzw[i];
@@ -3008,7 +3027,7 @@ var ECEditorPanel = IPanel.$extend(
         path = path || "";
         res = res || {};
         var keys = Object.getOwnPropertyNames(propertiesObj);
-        for (var i = 0; i < keys.length; ++i)
+        for (var i = 0, len = keys.length; i < len; ++i)
         {
             var key = keys[i];
             var obj = propertiesObj[key];
@@ -3032,7 +3051,7 @@ var ECEditorPanel = IPanel.$extend(
 
         var atLeastOneActive = false;
         var accordions = $("div[id^='accordion-']");
-        for (var i = 0; i < accordions.length; i++)
+        for (var i = 0, len = accordions.length; i < len; i++)
         {
             var targetCompId = $(accordions[i]).data("targetComponent");
             var isActive = $(accordions[i]).accordion("option", "active") === false ? false : true;
@@ -3605,7 +3624,7 @@ var IEditor = IWrapper.$extend(
         var panelsShortcutKeys = this.switchPanelsShortcut.replace(/ /g,'').split("+");
 
         var editorShortcutPressed = true;
-        for (var i = 0; i < editorShortcutKeys.length; ++i)
+        for (var i = 0, len = editorShortcutKeys.length; i < len; ++i)
         {
             if (!keyEvent.isPressed(editorShortcutKeys[i]))
             {
@@ -3615,7 +3634,7 @@ var IEditor = IWrapper.$extend(
         }
 
         var panelsShortcutPressed = true;
-        for (var i = 0; i < panelsShortcutKeys.length; ++i)
+        for (var i = 0, len = panelsShortcutKeys.length; i < len; ++i)
         {
             if (!keyEvent.isPressed(panelsShortcutKeys[i]))
             {
@@ -3768,7 +3787,7 @@ var IEditor = IWrapper.$extend(
             if (this.transformEditor)
                 this.transformEditor.clearSelection();
 
-            for (var i = 0; i < this.sceneEvents.length; i++)
+            for (var i = 0, len = this.sceneEvents.length; i < len; i++)
                 IEditor.scene.unsubscribe(this.sceneEvents[i]);
             this.sceneEvents.length = 0;
 
@@ -4117,7 +4136,7 @@ var UndoRedoManager = Class.$extend(
         var undoHistory = this.undoHistory();
         var redoHistory = this.redoHistory();
 
-        for (var i = 0; i < this.stateChangedCallbacks.length; i++)
+        for (var i = 0, len = this.stateChangedCallbacks.length; i < len; i++)
         {
             var context = this.stateChangedCallbacks[i].context;
             var callback = this.stateChangedCallbacks[i].callback;
@@ -4841,7 +4860,7 @@ var ToolkitManager = Class.$extend(
         liCurrent.append("<strong>Current state</strong>");
         liCurrent.appendTo(stackButtonSet);
 
-        for (var i = 0; i < undoHistory.length; i++)
+        for (var i = 0, len = undoHistory.length; i < len; i++)
         {
             var li = $("<li/>");
             li.append(undoHistory[i].commandString.substring(1));
@@ -4943,7 +4962,7 @@ var ToolkitManager = Class.$extend(
             icon : "ui-icon-document"
         }];
 
-        for (var i = 0; i < primitives.length; i++)
+        for (var i = 0, len = primitives.length; i < len; i++)
         {
             var li = $("<li/>");
             var a = $("<a href='#'></a>");
@@ -4954,7 +4973,7 @@ var ToolkitManager = Class.$extend(
             createMenu.append(li);
         }
 
-        for (var i = 0; i < quickAddItems.length; i++)
+        for (var i = 0, len = quickAddItems.length; i < len; i++)
         {
             var li = $("<li/>");
             var a = $("<a href='#'></a>");
@@ -4979,7 +4998,7 @@ var ToolkitManager = Class.$extend(
 
         menu.empty();
 
-        for(var i = 0; i < items.length; i++)
+        for(var i = 0, len = items.length; i < len; i++)
         {
             if (i === 5)
                 break;
@@ -5156,7 +5175,7 @@ var ModalDialog = Class.$extend(
             "float" : "right"
         });
 
-        for (var i = 0; i < options.length; i++)
+        for (var i = 0, len = options.length; i < len; i++)
         {
             var option = $("<option/>", {
                 value : options[i].value
@@ -5215,7 +5234,7 @@ var ModalDialog = Class.$extend(
             "border-size" : "4px"
         });
 
-        for (var i = 0; i < items.length; i++)
+        for (var i = 0, len = items.length; i < len; i++)
         {
             var button = $("<button/>", {
                 id : "draggable-" + items[i],
