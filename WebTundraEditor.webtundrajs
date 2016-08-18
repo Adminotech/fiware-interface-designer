@@ -14,7 +14,7 @@ define([
 
 var AddEntityCommand = ICommand.$extend(
 {
-    __init__ : function(scenePtr, components, name, replicated)
+    __init__ : function(scenePtr, components, name, replicated, temporary)
     {
         if (isNull(name))
             name = "";
@@ -30,12 +30,13 @@ var AddEntityCommand = ICommand.$extend(
         this.components = components;
         this.name = name;
         this.replicated = replicated;
+        this.temporary = temporary;
         this.id = 0;
     },
 
     exec : function()
     {
-        var entityPtr = this.scenePtr.createEntity(this.id, this.components, null, this.replicated);
+        var entityPtr = this.scenePtr.createEntity(this.id, this.components, null, this.replicated, null, this.temporary);
         this.id = entityPtr.id;
 
         if (this.name !== "")
@@ -442,6 +443,7 @@ var CreatePrimitiveCommand = ICommand.$extend(
         this.type = primitiveType;
         this.ref = meshRef;
         this.id = 0;
+        this.pos = undefined;
     },
 
     exec : function()
@@ -462,6 +464,17 @@ var CreatePrimitiveCommand = ICommand.$extend(
             return;
 
         meshRefAttr.set(this.ref);
+
+        if (!this.pos)
+        {
+            this.pos = new THREE.Vector3(0,-2,-7);
+            var camera = Tundra.renderer.activeCameraEntity();
+            var cameraPos = camera.placeable.worldPosition();
+            this.pos.applyQuaternion(camera.placeable.worldOrientation());
+            this.pos.add(cameraPos);
+        }
+
+        entity._ptr.placeable.setPosition(this.pos);
     },
 
     undo : function()
@@ -765,8 +778,18 @@ var TundraScene = SceneWrapper.$extend(
         return null;
     },
 
-    createEntity : function(id, components, change, replicated, componentsReplicated)
+    entityByName: function(entityName)
     {
+        var entityPtr = Tundra.scene.entityByName(entityName);
+        if (entityPtr !== null && entityPtr !== undefined)
+            return __(TundraEntity, entityPtr);
+
+        return null;
+    },
+
+    createEntity : function(id, components, change, replicated, componentsReplicated, temporary)
+    {
+        temporary = temporary || false;
         if (isNull(replicated))
             replicated = true;
         if (isNull(componentsReplicated))
@@ -782,6 +805,7 @@ var TundraScene = SceneWrapper.$extend(
         }
 
         var entity = Tundra.scene.createEntity(id, components, change, replicated, componentsReplicated);
+        entity.temporary = temporary;
         return __(TundraEntity, entity);
     },
 
@@ -949,6 +973,17 @@ var TundraScene = SceneWrapper.$extend(
     {
         var entity = __(TundraEntity, entityPtr);
         this.callback("onEntityCreated", entity);
+
+
+        setTimeout(function()
+        {
+            if (entityPtr.sky)
+                IEditor.Instance.introManager.playSection("addContent2");
+            else if (entityPtr.name === "Cube")
+                IEditor.Instance.introManager.playSection("addContent3");
+            else if (entityPtr.name === "movable")
+                IEditor.Instance.introManager.playSection("addContent4");
+        }, 1000);
     },
 
     _onEntityRemoved : function(entityPtr)
@@ -974,6 +1009,9 @@ var TundraScene = SceneWrapper.$extend(
         var component = __(TundraComponent, componentPtr);
 
         this.callback("onComponentCreated", entity, component);
+
+        if (entity.name === "movable" && component.typeName === "Light")
+            IEditor.Instance.introManager.playSection("addContent7");
     },
 
     _onComponentRemoved : function(entityPtr, componentPtr)
@@ -1406,6 +1444,7 @@ var TundraEditor = IEditor.$extend(
         this.$super(options);
         this.app = options.app || false;
 
+        this.introManager._injectStyle(this.app.resolveRef("webtundra-applications://editor/lib/introjs.min.css"));
         var fancyTreeCssPath = this.app ? this.app.resolveRef("webtundra-applications://editor/lib/skin-win8/ui.fancytree.css") : ".application/editor/lib/skin-win8/ui.fancytree.css";
         $("head").append('<link rel="stylesheet" href="' + fancyTreeCssPath + '">');
 
@@ -1492,7 +1531,7 @@ var TundraEditor = IEditor.$extend(
                     returns: 'Array'
                 }
             ]
-        }
+        };
     },
 
     /* virtual */
@@ -1541,6 +1580,11 @@ var TundraEditor = IEditor.$extend(
     container : function()
     {
         return $("body");
+    },
+
+    canvasContainer: function()
+    {
+        return $("#webtundra-container-custom");
     },
 
     /* pure virtual */
@@ -1677,6 +1721,11 @@ var TundraEditor = IEditor.$extend(
         this.addEntityCommand(["EC_Script"], "script", true);
     },
 
+    createLight: function()
+    {
+        this.addEntityCommand(["EC_Placeable", "EC_Light"], "light", true);
+    },
+
     showGrid : function()
     {
         Tundra.renderer.scene.add(this.gridHelper);
@@ -1697,6 +1746,165 @@ var TundraEditor = IEditor.$extend(
         Tundra.renderer.scene.remove(this.axisHelper);
     },
 
+    startIntro: function()
+    {
+        this.introManager.addSection(1, "introduction", [
+            {
+                intro : "Welcome to the Interface Designer demo! <br>In this example you will learn how to use the editor in WebTundra. This demo contains couple of sections that will show you how to create and manipulate content using the interface designer. Please follow the steps carefully."
+            },
+            {
+                intro: "We are currently in an empty scene, with only blackness surrounding us. Press <code>" + this.toggleEditorShortcut  + "</code> to open the Interface Designer"
+            }
+        ]);
+
+        this.introManager.addSection(2, "basics", [
+            {
+                intro: "The scene tree panel shows all existing entities as top-level items, and its components as the children. Double-clicking on an entity or component opens that entity in the <b>EC editor</b>.",
+                element: "#scenetree-panel",
+                position: "left"
+            },
+            {
+                intro: "You can undo, redo, save, load, create primitives, quickly add entities etc. from the toolbar.",
+                element: "#interfaceDesigner-toolbar",
+                position: "bottom"
+            },
+            {
+                intro: "We are going to start adding some content into the scene. Click here to open the <b>Add new entity</b> dialog.",
+                element: "#st-add-entity-button"
+            },
+        ]);
+
+        this.introManager.addSection(3, "addContent1", [
+            {
+                intro: "Let's add a sky to the scene. Drag the <code>Sky</code> component into the designated space below and click on <b>Add entity</b>. You can name the entity if you like, or also make it local (meaning it won't be sent to the network)",
+                element: "#dialog-AddEntity",
+                position: "top"
+            },
+        ]);
+
+        this.introManager.addSection(4, "addContent2", [
+            {
+                intro: "Now your scene contains a sky box. We will proceed adding some more content in the scene."
+            },
+            {
+                intro: "You can add some ready-made primitive shapes. For example, select <b>Cube</b> from this menu.",
+                element: "#_toolkit-createButton"
+            }
+        ]);
+
+        this.introManager.addSection(5, "addContent3", [
+            {
+                intro: "A cube has been created into the scene. You can move around with the camera using <b>WSAD</b> or the arrow keys, and right-click drag to rotate the camera. For the next step, click on the cube you just created."
+            }
+        ]);
+
+        this.introManager.addSection(6, "ecEditor", [
+            {
+                intro: "This is the <b>entity-component editor</b>. It is automatically shown when you select an entity from the scene, or from the scene tree. You can see and edit the components this cube contains: <code>Name</code>, <code>Placeable</code> and <code>Mesh</code>",
+                element: "#eceditor-panel",
+                position: "left"
+            },
+            {
+                intro: "The entity unique ID shown in brackets and the entity name shown here",
+                element: "#editor-entity-label",
+                position: "left"
+            },
+            {
+                intro: "You can add new components to the selected entity...",
+                element: "#ec-add-component-button",
+                position: "left"
+            },
+            {
+                intro: "...expand or collapse the components...",
+                element: "#ec-expand-collapse-button",
+                position: "left"
+            },
+            {
+                intro: "... or 'unlock' editing of the components, for example if you want to remove a component from the entity.",
+                element: "#ec-edit-component-button",
+                position: "left"
+            },
+            {
+                intro: "These are the components that this entity has. Clicking on the titles will expand their contents where you can further change their attributes.",
+                element: "#editor-component-accordions",
+                position: "left"
+            },
+            {
+                intro: "Clicking here will remove the selected entity",
+                element: "#_toolkit-deleteButton",
+                position: "bottom"
+            },
+            {
+                intro: "Switch between the scene tree editor and EC editor here",
+                element: "#_toolkit-panelsButtonSet",
+                position: "bottom"
+            },
+            {
+                intro: "Additionally, if the entity contains a <code>Placeable</code> component, a <b>transform gizmo</b> will be shown at its origin point (typically the center). You can drag the gizmo by one of the axis to move the cube around. Drag the planes to lock the movement on a plane (moving on two axes at the same time)",
+                position: "top"
+            },
+            {
+                intro: "You can change the transform gizmo's mode via these radio buttons. For example, select <b>rotate</b> if you want to rotate the cube, <b>scale</b> to scale it, etc.",
+                element: "#_toolkit-transformButtonSet",
+                position: "bottom"
+            },
+            {
+                intro: "Let's add some light into the scene. A light entity requires the components <code>Placeable</code> and <code>Light</code>. Via this menu you can quickly add most commonly defined entities here. 'Movable' will create an entity with the <code>Placeable</code> component, 'Drawable' with <code>Placeable</code> and <code>Mesh</code>, 'Script' with <code>Script</code> component, etc. First, click on the <b>Add...</b> button, and select <b>Movable</b> from the menu.",
+                element: "#_toolkit-quickAddButton",
+                position: "bottom"
+            }
+        ]);
+
+        this.introManager.addSection(7, "addContent4", [
+            {
+                intro: "A 'movable' entity has been created. Now switch to the scene editor if you haven't already so...",
+                element: "#_toolkit-panelsButtonSet",
+            },
+            {
+                intro: "... and double-click 'movable' from the scene tree",
+                element: "#_toolkit-panelsButtonSet"
+            }
+        ]);
+
+        this.introManager.addSection(8, "ecEditor2", [
+            {
+                intro: "Next, click here to open the <b>Add new component</b> dialog",
+                element: "#ec-add-component-button",
+                position: "left"
+            }
+        ]);
+
+        this.introManager.addSection(9, "addContent6", [
+            {
+                intro: "One step away from adding a 'light' functionality to this entity. Select <code>Light</code> from the drop-down menu. Additionally, you can define this component as local, and / or temporary.",
+                element: "#dialog-AddComponent",
+                position: "top"
+            }
+        ]);
+
+        this.introManager.addSection(10, "addContent7", [
+            {
+                intro: "Excellent. The cube should be illuminated now."
+            },
+            {
+                intro: "WebTundra supports variety of mesh formats that you can import into the scene. Such meshes should be hosted as you choose, and the URL to the mesh file given to <code>meshRef</code> attribute of <code>Mesh</code> component."
+            },
+            {
+                intro: "You can add such meshes as many as you want. For example, selecting <b>drawable</b> from this menu, will create an entity with 'Placeable' and 'Mesh' components.",
+                element: "#_toolkit-quickAddButton",
+                position: "bottom"
+            },
+            {
+                intro: "You can then select the entity as you did before from the scene tree editor, and expand the Mesh component. You can then add the URL to your mesh file under <code>meshRef</code>. If the transfer is successful, you should see the mesh shortly after"
+            },
+            {
+                intro: "That's it for this introduction! You can continue using the interface designer now."
+            }
+        ]);
+
+        this.introManager.start("introduction");
+    },
+
     hasActions: function(compTypeName)
     {
         return (!!this.actions[compTypeName.toLowerCase()]);
@@ -1710,9 +1918,10 @@ var TundraEditor = IEditor.$extend(
         return undefined;
     },
 
-    addEntityCommand : function(components, entityName, replicated)
+    addEntityCommand : function(components, entityName, replicated, temporary)
     {
-        this.undoStack.pushAndExec(new AddEntityCommand(TundraEditor.scene, components, entityName, replicated));
+        temporary = temporary || false;
+        this.undoStack.pushAndExec(new AddEntityCommand(TundraEditor.scene, components, entityName, replicated, temporary));
     },
 
     removeEntityCommand : function(entityPtr)
@@ -1805,8 +2014,9 @@ var TundraEditor = IEditor.$extend(
         for (var i = 0; i < this.transformEditor.targets.length; ++i)
             entities.push(this.transformEditor.targets[i].parentEntity.serializeToObject(true));
 
-        console.log(entities);
         this.clipboard = entities;
+
+        this.toolkit.showNotification(this.clipboard.length + " object(s) copied", 1000);
     }
 });
 
@@ -1843,7 +2053,7 @@ var EditorApplication = IApplication.$extend(
         this.started = true;
 
         IApplication.loadDependencies(this,
-            "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js", "lib/jquery.ui-contextmenu.min.js")
+            "lib/jquery.fancytree-all.min.js", "lib/FileSaver.min.js", "lib/vkbeautify.0.99.00.beta.js", "lib/jquery.ui-contextmenu.min.js", "lib/intro.js")
         .done(function()
         {
             this.editor = new TundraEditor({

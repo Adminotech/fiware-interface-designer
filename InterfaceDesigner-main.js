@@ -208,6 +208,8 @@ var SceneWrapper = IWrapper.$extend(
     */
     entityById : function(entityId) {},
 
+    entityByName: function(entityName) {},
+
     /**
         Creates an entity.<br>
         The implementation should create an entity in the underlying system, then return a wrapped object that inherits {@link EntityWrapper}
@@ -1104,6 +1106,154 @@ var IPanel = Class.$extend(
     }
 });
 
+var IntroManager = Class.$extend(
+/** @lends IntroManager.prototype */
+{
+    /**
+        @constructs
+    */
+    __init__: function(implementationName)
+    {
+        this.implementationName = implementationName;
+        this.sections = {};
+        this.currentSection = undefined;
+        this.currentIndex = 1;
+        this.started = false;
+        this.introCSS = undefined;
+        this.pastSections = [];
+    },
+
+    _injectStyle : function(cssPath)
+    {
+        // Dynamically import css to the page only if intro is ran (optimization)
+        if (!this.introCSS)
+        {
+            this.introCSS = $('<link>')
+                .appendTo('head')
+                .attr({type : 'text/css', rel : 'stylesheet'})
+                .attr('href', cssPath || 'lib/introjs.css');
+        }
+    },
+
+    /**
+        Returns true if an intro element is currently shown, false otherwise
+        @return {boolean}
+    */
+    isStarted: function()
+    {
+        return this.started;
+    },
+
+    addSection: function(index, name, steps)
+    {
+        if (!Array.isArray(steps))
+        {
+            console.warn("[IntroManager]: addSection: Invalid steps provided. Expected array of objects, but got ", steps);
+            return;
+        }
+
+        if (this.sections[name])
+        {
+            console.warn("[IntroManager]: addSection: Section with name " + name + " already exists");
+            return;
+        }
+
+        this.sections[name] = {
+            index: index,
+            steps: steps
+        }
+    },
+
+    /**
+        Starts the intro with a section with given name.<br>
+
+        @param {string} ...section Section names
+    */
+    start: function(section)
+    {
+        if (this.isStarted())
+            return;
+
+        this.started = true;
+        this.playSection(section);
+    },
+
+    playSection: function()
+    {
+        if (!this.isStarted())
+            return;
+
+        var name = "";
+        for (var i = 0, len = arguments.length; i < len; ++i)
+        {
+            var arg = arguments[i];
+            if (this.pastSections.indexOf(arg) !== -1)
+            {
+                console.debug("[IntroManager]: playSection: Section already played:", arg);
+                continue;
+            }
+            name = arg;
+        }
+
+        if (name === "")
+        {
+            console.debug("[IntroManager]: playSection: Sections already played: ", arguments);
+            return;
+        }
+        if (!this.sections[name])
+        {
+            console.warn("[IntroManager]: playSection: Section not found: ", name);
+            return;
+        }
+
+        if (this.sections[name].index > this.currentIndex)
+        {
+            console.debug("[IntroManager]: playSection: Section cannot be played before the current index: requested:", this.sections[name].index, " current: ", this.currentIndex);
+            return;
+        }
+
+
+        this.stopCurrent();
+
+        this.currentSection = introJs().setOptions({
+            exitOnOverlayClick: false,
+            exitOnEsc: false,
+            showStepNumbers: false,
+            showProgress: false,
+            disableInteraction: true,
+            steps: this.sections[name].steps
+        });
+        this.currentSection._internalName = name;
+
+        this.currentSection.oncomplete(this._onSectionExit.bind(this));
+        this.currentSection.onexit(this._onSectionExit.bind(this));
+
+        this.currentSection.start();
+    },
+
+    stopCurrent: function()
+    {
+        if (this.currentSection)
+            this.currentSection.exit();
+    },
+
+    stop: function()
+    {
+        this.stopCurrent();
+        this.started = false;
+        this.currentIndex = 0;
+    },
+
+    _onSectionExit: function()
+    {
+        this.pastSections.push(this.currentSection._internalName);
+        delete this.currentSection;
+        this.currentIndex++;
+        if (this.pastSections.length === Object.keys(this.sections).length)
+            this.stop();
+    }
+});
+
 var SceneTreePanel = IPanel.$extend(
 {
     __init__ : function(options)
@@ -1438,6 +1588,7 @@ var SceneTreePanel = IPanel.$extend(
 
         var inputNewEntityId = "input-newEntityName";
         var checkboxIsLocalId = "checkbox-localEntity";
+        var checkboxTemporaryId = "checkbox-temporary";
         var buttons = {
             "Add entity" : function()
             {
@@ -1448,7 +1599,8 @@ var SceneTreePanel = IPanel.$extend(
 
                 var entityName = $("#" + inputNewEntityId).val();
                 var isLocal = $("#" + checkboxIsLocalId).is(":checked");
-                IEditor.Instance.addEntityCommand(componentNames, entityName, !isLocal);
+                var temporary = $("#" + checkboxTemporaryId).is(":checked");
+                IEditor.Instance.addEntityCommand(componentNames, entityName, !isLocal, temporary);
 
                 $(this).dialog("close");
                 $(this).remove();
@@ -1463,6 +1615,7 @@ var SceneTreePanel = IPanel.$extend(
         var dialog = new ModalDialog("AddEntity", "Add new entity", 550, 300);
         dialog.appendInputBox(inputNewEntityId, "Name this entity (optional)", "string");
         dialog.appendInputBox(checkboxIsLocalId, "Create local entity", "checkbox");
+        dialog.appendInputBox(checkboxTemporaryId, "Temporary", "checkbox");
 
         var componentNames = [];
         var registeredComponents = IEditor.scene.registeredComponents();
@@ -1805,6 +1958,9 @@ var ECEditorPanel = IPanel.$extend(
 
                 $(this).dialog("close");
                 $(this).remove();
+
+                IEditor.Instance.panels["eceditor"].onMultiSelect();
+                IEditor.Instance.toolkit.onMultiSelect();
             },
             "Cancel" : function()
             {
@@ -1899,7 +2055,6 @@ var ECEditorPanel = IPanel.$extend(
 
             this.ui.upButton.hide();
             this.ui.buttonsHolder.hide();
-            this.lastSelectedObjects = 0;
         }
         else if (isNotNull(entityPtr))
         {
@@ -1913,9 +2068,10 @@ var ECEditorPanel = IPanel.$extend(
                 this.ui.upButton.show();
             else
                 this.ui.upButton.hide();
-
-            this.lastSelectedObjects = 1;
         }
+
+        if (IEditor.Instance.transformEditor)
+            this.lastSelectedObjects = IEditor.Instance.transformEditor.targets.length;
     },
 
     onMultiSelect : function()
@@ -3154,6 +3310,7 @@ var IEditor = IWrapper.$extend(
         this.currentObject = null;
 
         this.initTransformEditor();
+        this.introManager = new IntroManager(this.type);
 
         this.fontConfig = $.extend({}, this.defaultFontConfig());
         this.fontConfigMonospaceConfig = $.extend({
@@ -3278,6 +3435,16 @@ var IEditor = IWrapper.$extend(
         @return {jQuery} - The container element
     */
     container : function() {},
+
+    /**
+        Returns the container that contains the 3D canvas
+        @virtual
+        @return {jQuery} - The container element
+    */
+    canvasContainer: function()
+    {
+        return $("body");
+    },
 
     /**
         Adds a widget / 2D UI to the browser, or container if such is implemented.
@@ -3490,6 +3657,13 @@ var IEditor = IWrapper.$extend(
     createScript : function() {},
 
     /**
+        Adds a "create light" command in the undo stack. See {@link UndoRedoManager} for more information on keeping the editing history.<br>
+        Implementations should create a generic command derived from {@link ICommand} for creating a script, and adding that command to the undo manager instance {@link IEditor#undoStack}
+        @virtual
+    */
+    createLight : function() {},
+
+    /**
         Shows the helper grid on the XZ plane.<br>
         Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
     */
@@ -3512,6 +3686,8 @@ var IEditor = IWrapper.$extend(
         Implementations of this method should handle the creation of the appropriate grid in the underlying system renderer
     */
     hideAxes : function() {},
+
+    startIntro: function() {},
 
     hasActions: function(type)
     {
@@ -3540,6 +3716,8 @@ var IEditor = IWrapper.$extend(
             this.createMovable();
         else if (type === "Script")
             this.createScript();
+        else if (type === "Light")
+            this.createLight();
         else
             this.logError("quickCreate: Unknown type: " + text);
     },
@@ -3552,7 +3730,7 @@ var IEditor = IWrapper.$extend(
 
         var undoListStyle = "#_toolkit-undoStackButtons .ui-selecting { background: #AAAAAA; } \
         #_toolkit-undoStackButtons .ui-selected { background: #BBBBBB; color: white; } \
-        #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; width: 60%; } \
+        #_toolkit-undoStackButtons { list-style-type: none; margin: 0; padding: 0; } \
         #_toolkit-undoStackButtons li { margin: 3px; padding: 0.4em; font-size: 1.4em; height: 18px; } ";
 
         var monoSpaceFlat = "";
@@ -3674,10 +3852,15 @@ var IEditor = IWrapper.$extend(
         }
         else if (keyEvent.isPressed("ctrl") && keyEvent.isPressed("v"))
         {
+            if (!this.clipboard || this.clipboard.length < 1)
+                return;
+
+            this.toolkit.showNotification(this.clipboard.length + " object(s) pasted");
             IEditor.Instance.pasteCommand(this.clipboard);
             keyEvent.originalEvent.preventDefault();
             keyEvent.originalEvent.stopPropagation();
             keyEvent.suppressed = true;
+
         }
     },
 
@@ -3802,6 +3985,9 @@ var IEditor = IWrapper.$extend(
 
         if (isNull(this.transformEditor))
             this.initTransformEditor();
+
+        if (this.enabled)
+            this.introManager.playSection("basics");
     },
 
     /**
@@ -3841,14 +4027,6 @@ var IEditor = IWrapper.$extend(
     */
     selectEntity : function(entityPtr, activeComponent)
     {
-        var panelsKeys = Object.keys(this.panels);
-        for (var i = panelsKeys.length - 1; i >= 0; i--)
-        {
-            var panel = this.panels[panelsKeys[i]];
-            if (typeof panel.onEntitySelected === "function")
-                panel.onEntitySelected(entityPtr, activeComponent);
-        }
-
         if (isNull(entityPtr))
         {
             if (isNotNull(this.transformEditor))
@@ -3860,9 +4038,25 @@ var IEditor = IWrapper.$extend(
             // switch to eceditor
             this.switchPanels("eceditor");
             if (isNotNull(this.transformEditor))
+            {
                 this.transformEditor.setTargetEntity(entityPtr);
 
+            }
+
             this.currentObject = entityPtr;
+
+            if (this.currentObject.name === "Cube")
+                this.introManager.playSection("ecEditor");
+            else if (this.currentObject.name === "movable")
+                this.introManager.playSection("ecEditor2");
+        }
+
+        var panelsKeys = Object.keys(this.panels);
+        for (var i = panelsKeys.length - 1; i >= 0; i--)
+        {
+            var panel = this.panels[panelsKeys[i]];
+            if (typeof panel.onEntitySelected === "function")
+                panel.onEntitySelected(entityPtr, activeComponent);
         }
 
         this.toolkit.onEntitySelected(entityPtr);
@@ -4222,14 +4416,12 @@ var UndoRedoManager = Class.$extend(
     */
     goToState : function(commandId)
     {
-        if (commandId < 0)
+        var times = this.calculateTimes(commandId);
+        if (times == 0)
             return;
 
-        var undoOrRedo = (this._index - commandId) >= 0;
-        var times = Math.abs(this._index - commandId);
-
-        if (undoOrRedo)
-            ++times;
+        var undoOrRedo = times > 0;
+        times = Math.abs(times);
 
         for (var i = 0; i < times; i++)
         {
@@ -4240,6 +4432,25 @@ var UndoRedoManager = Class.$extend(
         }
 
         this._onStateChanged();
+    },
+
+    /**
+        Calculates how many times the history should be undone / redone until it reaches the state given with 'commandId' parameter.<br>
+        @param {number} commandId The state to be calculated from
+        @return {number} - The number of times the stack needs to be undone or redone. Positive number for undo, negative for redo, 0 if no change
+    */
+    calculateTimes: function(commandId)
+    {
+        if (commandId < 0)
+            return 0;
+
+        var undoOrRedo = (this._index - commandId) >= 0;
+        var times = Math.abs(this._index - commandId);
+
+        if (undoOrRedo)
+            ++times;
+
+        return undoOrRedo ? times : (times * -1);
     },
 
     /**
@@ -4408,7 +4619,9 @@ var ToolkitManager = Class.$extend(
             }
         });
 
-        this.ui.quickAddButton = $("<button/>");
+        this.ui.quickAddButton = $("<button/>", {
+            id: "_toolkit-quickAddButton"
+        });
         this.ui.quickAddButton.text("Add...");
         this.ui.quickAddButton.css({
             "font-size" : "10px",
@@ -4434,7 +4647,9 @@ var ToolkitManager = Class.$extend(
 
         $("body").append(this.ui.quickAddMenu);
 
-        this.ui.createButton = $("<button/>");
+        this.ui.createButton = $("<button/>", {
+            id : "_toolkit-createButton"
+        });
         this.ui.createButton.text("Create");
         this.ui.createButton.css({
             "font-size" : "10px",
@@ -4460,7 +4675,9 @@ var ToolkitManager = Class.$extend(
 
         $("body").append(this.ui.createMenu);
 
-        this.ui.deleteButton = $("<button/>");
+        this.ui.deleteButton = $("<button/>", {
+            id: "_toolkit-deleteButton"
+        });
         this.ui.deleteButton.css({
             "width" : "40px",
             "height" : "22px"
@@ -4801,7 +5018,42 @@ var ToolkitManager = Class.$extend(
 
         $("body:not(.ui-menu)").click(function() {
             $(".ui-menu").hide();
-        })
+        });
+
+        this.ui.notificationBar = $("<div/>", {
+            id: "_toolkit-notificationBar"
+        });
+
+        this.ui.notificationBar.css({
+            "position" : "absolute",
+            "top"      : "8px",
+            "left"     : "calc(50% - 200px)",
+            "height"   : "30px",
+            "width"    : "400px",
+            "background-color" : "#EEE",
+            "color"    : "#444",
+            "font-size" : "22px",
+            "text-align" : "center",
+            "border-radius" : "10px"
+        });
+
+        IEditor.Instance.canvasContainer().append(this.ui.notificationBar);
+        this.ui.notificationBar.hide();
+    },
+
+    showNotification: function(text, timeout)
+    {
+        if (this.ui.notificationBar.is(":visible"))
+            return;
+
+        timeout = timeout || 2500;
+
+        this.ui.notificationBar.html(text);
+        this.ui.notificationBar.show();
+        setTimeout(function()
+        {
+            this.ui.notificationBar.fadeOut();
+        }.bind(this), timeout);
     },
 
     appendPanelButton : function(panelName, label)
@@ -4842,7 +5094,9 @@ var ToolkitManager = Class.$extend(
             "margin-left" : "auto",
             "margin-right" : "auto",
             "font-size" : "8px",
-            "minWidth" : "150px"
+            "minWidth" : "150px",
+            "max-height": "430px",
+            "overflow" : "auto"
         })
 
         var undoHistory = IEditor.Instance.undoStack.undoHistory();
@@ -4868,11 +5122,32 @@ var ToolkitManager = Class.$extend(
             li.appendTo(stackButtonSet);
         }
 
+        var labelElement = $("<label/>", {
+            id : "label-undoStackItems"
+        });
+        labelElement.css({
+            "font-size": "14px",
+            "color": "#212121"
+        });
+
+        labelElement.html("No changes will be made");
+
         stackButtonSet.selectable({
-            tolerance : "fit"
+            tolerance : "fit",
+            selected: function(event, ui) {
+                var commandId = parseInt($(ui.selected).data("commandId"));
+                if (isNaN(commandId))
+                    labelElement.html("No changes will be made");
+                else
+                {
+                    var times = IEditor.Instance.undoStack.calculateTimes(commandId);
+                    labelElement.html((times > 0 ? "Undo " : "Redo ") + Math.abs(times) + " action(s)");
+                }
+            }
         });
 
         dialog.append(stackButtonSet);
+        dialog.append(labelElement);
         dialog.dialog({
             resizable : false,
             width : 300,
@@ -4960,6 +5235,10 @@ var ToolkitManager = Class.$extend(
         {
             text : "Script",
             icon : "ui-icon-document"
+        },
+        {
+            text : "Light",
+            icon : "ui-icon-lightbulb"
         }];
 
         for (var i = 0, len = primitives.length; i < len; i++)
@@ -5145,6 +5424,9 @@ var ModalDialog = Class.$extend(
         this.element.css({
             "font-size" : "14px"
         });
+
+        this.content = $("<div/>");
+        this.element.append(this.content);
 
         this.width = dialogWidth;
         this.height = dialogHeight;
@@ -5344,11 +5626,11 @@ var ModalDialog = Class.$extend(
 
     append : function(element, newLine)
     {
-        this.element.append(element);
+        this.content.append(element);
 
         if (isNotNull(newLine))
             if (newLine)
-                this.element.append("<br /><br />");
+                this.content.append("<br /><br />");
     },
 
     addButtons : function(buttons)
@@ -5365,6 +5647,13 @@ var ModalDialog = Class.$extend(
             modal : true,
             closeOnEscape : true,
             buttons : this.buttons,
+            open: function(event, ui)
+            {
+                if ($(event.target).attr("id") === "dialog-AddEntity")
+                    IEditor.Instance.introManager.playSection("addContent1");
+                else if ($(event.target).attr("id") === "dialog-AddComponent")
+                    IEditor.Instance.introManager.playSection("addContent6");
+            },
             close : function()
             {
                 $(this).remove();
