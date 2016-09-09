@@ -856,7 +856,13 @@ var TundraScene = SceneWrapper.$extend(
 
     doRaycast : function(x, y, selectionLayer)
     {
-        var result = Tundra.renderer.raycast(x, y, selectionLayer);
+        var result = Tundra.renderer.raycast({
+            x: x,
+            y: y,
+            selectionLayer : selectionLayer,
+            recursive: true
+        });
+
         return new TundraRaycastResult(result);
     },
 
