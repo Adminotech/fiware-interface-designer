@@ -1,4 +1,4 @@
-# Introduction 
+# Introduction
 This document describes the installation and administration of the Interface Designer GE.
 
 # System Requirements
@@ -32,6 +32,13 @@ Other internal dependencies which are included in the release package (but point
 * Download the package from the [Interface Designer FIWARE Catalogue](http://catalogue.fiware.org/enablers/interface-designer/downloads) or clone the [Git repository](https://github.com/Adminotech/fiware-interface-designer). The package contains **all necessary dependencies**, and the directory structure is as follows:
 
 		ROOT/
+            doc/
+                index.md
+                installation_administration.md
+                user_programmers.md
+            docker/
+                Dockerfile
+                docker.md
     		lib/
     		    skin-win8/
     		        icons.gif
@@ -40,6 +47,8 @@ Other internal dependencies which are included in the release package (but point
     		        ui.fancytree.css
     		    classy.js
     		    FileSaver.min.js
+                intro.js
+                introjs.min.css
     		    jquery-ui.js
     		    jquery.ui-contextmenu.min.js
     		    jquery.fancytree-all.min.js
@@ -57,6 +66,7 @@ Other internal dependencies which are included in the release package (but point
  		   	COPYRIGHT
     		InterfaceDesigner-main.js
    			LICENSE
+            mkdocs.yml
     		README.md
     		WebTundraEditor.webtundrajs
     		XML3DEditor.js
@@ -86,7 +96,7 @@ Let's breakdown the code for better understanding.
     	<script type="text/javascript" src="lib/xml3d.js"></script>
     	<script type="text/javascript" src="lib/xml3d.tools.js"></script>
     	<script type="text/javascript" src="lib/jquery.js"></script>
-    	<script type="text/javascript" src="lib/jquery-ui.js"></script> 
+    	<script type="text/javascript" src="lib/jquery-ui.js"></script>
     	<script type="text/javascript" src="lib/jquery.fancytree-all.min.js"></script>
     	<script type="text/javascript" src="lib/jquery.ui-contextmenu.min.js"></script>
     	<script type="text/javascript" src="lib/FileSaver.min.js"></script>
@@ -107,8 +117,8 @@ Let's breakdown the code for better understanding.
         	    camera.attach();
         	    // XML3D editor instance
         	    var editor = new XML3DEditor({
-        	        mainContent: "mainContent", 
-        	        canvas: "mainCanvas", 
+        	        mainContent: "mainContent",
+        	        canvas: "mainCanvas",
         	        resourcesPath: "resources/"
         	    });
         	}, false);
@@ -118,8 +128,8 @@ Let's breakdown the code for better understanding.
 * In the 'load' event, an instance of `XML3DEditor` is made that accepts an options JSON: `mainContent` is the variable that will hold the ID of the main `<div>` element, `canvas` holds the ID of the main `<xml3d>` element, and `resourcesPath` the path to the `resources` folder that comes with the package.
 
         var editor = new XML3DEditor({
-            mainContent: "mainContent", 
-            canvas: "mainCanvas", 
+            mainContent: "mainContent",
+            canvas: "mainCanvas",
             resourcesPath: "resources/"
         });
 
@@ -139,4 +149,4 @@ Let's breakdown the code for better understanding.
     	</body>
 
 # Sanity check procedures
-As a verification that everything was installed correctly, pressing the shortcut `"Shift" + "S"` should open up the scene editor, and should be ready to use. If you use the above XML3D example, you will come across an empty scene. 
+As a verification that everything was installed correctly, pressing the shortcut `"Shift" + "S"` should open up the scene editor, and should be ready to use. If you use the above XML3D example, you will come across an empty scene.

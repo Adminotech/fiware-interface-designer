@@ -33,10 +33,10 @@ A **dynamic** component is completely user-defined, which means the user can add
 
 Some of the core component types include:
 
-* Name: Adds a name to the entity. 
+* Name: Adds a name to the entity.
 * Placeable: Gives the entity a position / rotation / scale (further in the text altogether called "Transform") into the 3D scene, or toggles its visibility.
 * Mesh: A collection of vertices, edges and faces that define the appearance of a 3D object. The mesh formats supported are defined by the underlying client application.
-* Camera: Provides a first-view look to a 3D scene. 
+* Camera: Provides a first-view look to a 3D scene.
 * Script: Provides scripting to the target entity, or the whole scene, that can further expand functionality of the scene as required by the author (for example, a script that moves the camera with the arrow keys on the keyboard)
 * Dynamic: The fore-mentioned "user-defined" component.
 
@@ -70,8 +70,8 @@ Attributes are atomic or complex data types that store human-readable informatio
 
 The availability of entities and components to the server and other clients, can be defined as **local** or **replicated** (also known as **synchronized**), and **temporary** or persistent.
 
-* A local entity or component is visible only to the current running client. Their creation, removal or changes are not sent to the server, and so other clients "do not know" about said entity or component. Changing means adding / removing components of the entity, and in case of component, changing the values of its attributes. 
-* A replicated (synchronized) entity or component is the opposite of local; When a replicated entity or component is created / removed / changed, the server is notified which will forward the information to all the clients. 
+* A local entity or component is visible only to the current running client. Their creation, removal or changes are not sent to the server, and so other clients "do not know" about said entity or component. Changing means adding / removing components of the entity, and in case of component, changing the values of its attributes.
+* A replicated (synchronized) entity or component is the opposite of local; When a replicated entity or component is created / removed / changed, the server is notified which will forward the information to all the clients.
 * A temporary entity or component means that the entity or component will not be considered when the scene is saved to a file. This is useful in cases where entities are not meant to became part of a permanent scene, for example, an external script that takes care of creating an entity and using it for its own purposes that are usually short-term.
 
 #### XML3D model vs ECA
@@ -119,7 +119,7 @@ Right-clicking an entity from the tree-view and selecting "Edit..." in the conte
 
 ### Entity-component editor
 
-The entity-component editor further expands component and attribute information, placed in jquery-ui "accordions" which can be individually expanded / collapsed. 
+The entity-component editor further expands component and attribute information, placed in jquery-ui "accordions" which can be individually expanded / collapsed.
 
 ![The EC editor, editing an entity named "box3", with unique id 8](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/f/f2/InterfaceDesigner_Editor.png)
 
@@ -137,7 +137,7 @@ Pressing on **"Add new component"** will pop-up a modal dialog, asking for the c
 !["Add component" dialog](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/c/cf/InterfaceDesigner_AddComponent.jpg)
 
 
-When the **"Edit"** button is toggled, the **"Remove this component"** (remove **"X"** icon) and **"Add new attribute"** (plus sign **"+"** icon) or **"Edit"** (pencil icon) buttons are shown on the accordion header where applicable. 
+When the **"Edit"** button is toggled, the **"Remove this component"** (remove **"X"** icon) and **"Add new attribute"** (plus sign **"+"** icon) or **"Edit"** (pencil icon) buttons are shown on the accordion header where applicable.
 
 !["Remove this component"](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/c/c0/InterfaceDesigner_RemoveComponentTooltip.png)
 
@@ -188,7 +188,7 @@ By dragging on the axes, the movement is restricted to a single coordinate, whil
 
 #### Rotate
 
-The "Rotate" mode is used to rotate the object in place. It consists of 3 arcs, each colored to the corresponding coordinate (as explained above), and 1 circle that allows rotation according to the current camera view. 
+The "Rotate" mode is used to rotate the object in place. It consists of 3 arcs, each colored to the corresponding coordinate (as explained above), and 1 circle that allows rotation according to the current camera view.
 ![Rotation mode](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/2/24/InterfaceDesigner_GizmoRotate.png)
 
 #### Scale
@@ -205,14 +205,14 @@ By holding "shift" and selecting objects, you can manipulate simultaneously all 
 
 The toolbar contains "Undo" and "Redo" buttons, "Create" button for primitives, "Add..." button for quick-adding empty entities, "Delete" button, "Toggle grid", "Toggle axes", "Translate | Rotate | Scale" radio buttons and "Scene tree | EC editor" radio buttons.
 
-* Clicking on Undo will undo the last made edit / action. "Redo" repeats the last undone action. 
+* Clicking on Undo will undo the last made edit / action. "Redo" repeats the last undone action.
 * "Create" will pop-up a menu that has "Cube", "Ball", "Cone" and "Cylinder" items. Clicking on any of those will create a primitive object on the scene, depending on the selection.
 * "Add..." will pop-up a menu that has "Movable", "Drawable" and "Script" items, that create an entity with the corresponding components. For example, a drawable entity is an entity that has a mesh component.
 * Clicking on the "Delete" (trash can icon) button will remove the current edited object, for which it will ask with a confirmation dialog.
 * "Toggle grid" (grid icon) toggles a grid in the 3D scene, with its center in the 0,0,0 point, and two crossed red lines for each X and Z axis.
 * "Toggle axes" (arrows icon) toggles a simple axes mesh, similar to that of the gizmo, but serving only as a guide.
 * "Translate | Rotate | Scale" serve for changing the transform gizmo mode. Disabled when no object is selected.
-* "Scene tree | EC editor" switches between the scene tree and EC panels, as an alternative to the "Shift" + E keyboard shortcut. 
+* "Scene tree | EC editor" switches between the scene tree and EC panels, as an alternative to the "Shift" + E keyboard shortcut.
 
 ![Toolbar](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/4/4c/InterfaceDesigner_Toolbar.png)
 ![Grid](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/1/10/InterfaceDesigner_Grid.png)
@@ -235,14 +235,15 @@ When the stack contains more than 5 items, there is an extra menu item "View all
 
 Again, the topmost item is the most recent action, while the bottommost is the least recent action. The "Current state" item represents how deep into the undo stack the current state is. As the picture shows, there is one item above "Current state" and many below. Clicking on items above "Current state" and then "Ok" will call "redo" (as many times as it should) and clicking on the items below "Current state" will call "undo". If "Current state" is selected, it will have no effect.
 
+
 #### Saving and loading
 
 
-You can save your work by clicking on the disk button "Save". 
+You can save your work by clicking on the disk button "Save".
 
 ![Save / load](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/ea/Tutorial17.PNG)
 
-A dialog will appear to ask the desired filename. 
+A dialog will appear to ask the desired filename.
 
 ![Name the file](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/c/ce/Tutorial18.PNG)
 
@@ -250,11 +251,17 @@ The file will be saved as a download in your "Downloads" folder, similar to down
 
 ![Downloads](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/ed/Tutorial19.PNG)
 
-Loading your work is done by clicking on the opened folder button "Load". A dialog will appear with a button "Choose file". 
+Loading your work is done by clicking on the opened folder button "Load". A dialog will appear with a button "Choose file".
 
 ![Load a scene](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/f/ff/LoadScene.png)
 
 Click on "Choose File" and select a file from your local drive. Be aware that loading previously saved work will overwrite any unsaved work you have done.
+
+#### Live tutorial
+
+A live tutorial of the [Interface Designer in WebTundra is available here.](http://webtundra.lab.fiware.org/nightly/client.html?example=interfacedesigner)
+
+Follow the on-screen instructions to get to know the basic functionality of the Interface Designer, and try them yourself.
 
 ### Sample scene creation
 
@@ -262,61 +269,61 @@ Click on "Choose File" and select a file from your local drive. Be aware that lo
 The following tutorial shows how to create a simple scene using the Interface Designer. As a foreword, the Interface Designer is not a 3D modeler but rather a scene manipulator, so it is expected by the user to have his/her own meshes and materials / textures for the 3D scene that can be made with external tools (Blender, 3DMAX etc.), and also to be exported in the supported asset format, depending on the underlying 3D-UI GE. For this example, we are going to use WebTundra GE. You can download the materials used in this tutorial, and host them anywhere you like. In this example, the assets are hosted locally, at port 8082, inside /html/assets/ path.
 The starting point is an empty, pitch black scene.
 
-**1.** Start the editor by pressing Shift + S. The scene tree should be visible on the right side. 
+**1.** Start the editor by pressing Shift + S. The scene tree should be visible on the right side.
 
 ![Empty scene](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/1/15/Tutorial1.PNG)
 
 There should be nothing else but camera and the instance of the editor application. You can move around with the camera with the WSAD or arrow keys keys (W / Up arrow- forward, S / Down arrow - backward, A - left-strafe, Left arrow - turn left, D - right-strafe, Right arrow - turn right, C - down, Space - up), and rotate the camera with a right-click dragging of the mouse.
 
-**2.** Start by adding an environment light. Click on the "Add new entity" button in the Scene tree 
+**2.** Start by adding an environment light. Click on the "Add new entity" button in the Scene tree
 
 ![Add new entity](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/d/da/Tutorial2.PNG)
 
 **3.** Name the new entity "Light", and drag and drop the "EnvironmentLight" component to the place shown.
 
-**4.** Now right-click on the new created entity "Light" and click on "Edit" 
+**4.** Now right-click on the new created entity "Light" and click on "Edit"
 
 ![Edit menu item](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/2/27/Tutorial3.PNG)
 
-to enter the Entity-Component editor. 
+to enter the Entity-Component editor.
 
 ![EC editor](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/e2/Tutorial4.PNG)
 
 **5.** We want to add some nice sky and water. Click on the "Add new component" button.
 
-**6.** In the component type, select the "Sky" component and click on "Add component". 
+**6.** In the component type, select the "Sky" component and click on "Add component".
 
 ![Add component](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/f/f6/Tutorial5.PNG)
 
 Repeat this step, only this time select "WaterPlane" component.
 
-**7.** The sky and water should be visible at this point 
+**7.** The sky and water should be visible at this point
 
 ![Sky and water](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/5/5e/Tutorial6.PNG).
 
-**8.** Time to start adding some content. Click on the upper menu "Add..." 
+**8.** Time to start adding some content. Click on the upper menu "Add..."
 
-![Add... menu](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/4/4a/Tutorial7.PNG) 
+![Add... menu](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/4/4a/Tutorial7.PNG)
 
-and select "Drawable". An entity named "drawable" with components "Name", "Mesh" and "Placeable" will be created. 
+and select "Drawable". An entity named "drawable" with components "Name", "Mesh" and "Placeable" will be created.
 
 ![New drawable entity](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/c/ce/Tutorial8.PNG)
 
-**9.** Right-click and "Edit" on the new "drawable" entity. Expand the "Mesh" component. First we add the room. Copy-paste the URLs of the room ".mesh" file (in this example it is http://localhost:8082/html/assets/room.mesh) into the "meshRef" attribute, and the URL to its ".material" file into "materialRefs". 
+**9.** Right-click and "Edit" on the new "drawable" entity. Expand the "Mesh" component. First we add the room. Copy-paste the URLs of the room ".mesh" file (in this example it is http://localhost:8082/html/assets/room.mesh) into the "meshRef" attribute, and the URL to its ".material" file into "materialRefs".
 
 ![Mesh and material refs](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/8/80/Tutorial9.PNG)
 
 **10.** Optionally, expand the "Name" component, and rename this entity to "Room".
 
-**11.** You should now see the room. 
+**11.** You should now see the room.
 
 ![Room mesh](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/0/08/Tutorial10.PNG)
 
-**12.** You can move the room around, or any other entity that has the "Placeable" component with the transform gizmo 
+**12.** You can move the room around, or any other entity that has the "Placeable" component with the transform gizmo
 
 ![Translate gizmo](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/9/95/Tutorial11.PNG).
 
-The gizmo mode can be selected on the toolbar up 
+The gizmo mode can be selected on the toolbar up
 
 ![Gizmo modes](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/9/97/Tutorial12.PNG) ![Rotate gizmo](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/2/26/Tutorial13.PNG)
 
@@ -326,29 +333,29 @@ Manipulate the transform of the objects to your liking until you get the desired
 
 ![Scene tree / EC editor](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/1/10/Tutorial14.PNG).
 
-**14.** You can also undo / redo your steps up to 50 manipulations 
+**14.** You can also undo / redo your steps up to 50 manipulations
 
-![Undo stack](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/b/ba/Tutorial15.PNG). 
+![Undo stack](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/b/ba/Tutorial15.PNG).
 
 This is the current limit of the undo / redo manager.
 
-**15. The final look of the scene. 
+**15. The final look of the scene.
 
 ![Final scene](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/7/7b/Tutorial16.PNG)
 
-**16. Save your work by clicking on the disk icon in the toolbar 
+**16. Save your work by clicking on the disk icon in the toolbar
 
-![Save / load](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/ea/Tutorial17.PNG). 
+![Save / load](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/ea/Tutorial17.PNG).
 
-Name your file and click OK. 
+Name your file and click OK.
 
 ![Naming file](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/c/ce/Tutorial18.PNG)
 
-The file will be saved in your "Downloads" folder, similar to how you download files in your target browser. 
+The file will be saved in your "Downloads" folder, similar to how you download files in your target browser.
 
 ![Downloads](https://forge.fiware.org/plugins/mediawiki/wiki/fiware/images/e/ed/Tutorial19.PNG)
 
 # Programmers guide
 
-If your underlying system describes the 3D scenes as Entity-Component-Attribute system, you can adapt this library to your needs. 
+If your underlying system describes the 3D scenes as Entity-Component-Attribute system, you can adapt this library to your needs.
 Refer to the [javascript API reference](https://edu.fiware.org/mod/resource/view.php?id=718) for information on all classes.
